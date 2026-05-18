@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 import httpx
 import google.generativeai as genai
@@ -18,13 +19,12 @@ model = genai.GenerativeModel(
     model_name="gemini-2.0-flash",
     system_instruction="""Ты — AI-собеседник для практики разговорного русского языка.
 Правила:
-1. Отвечай ТОЛЬКО на русском языке, коротко и разговорно (2–4 предложения)
+1. Отвечай ТОЛЬКО на русском языке, коротко и разговорно (2-4 предложения)
 2. После ответа задай один простой вопрос, чтобы продолжить разговор
 3. Если пользователь допустил грамматическую ошибку, мягко исправь в конце
 4. Стиль: дружелюбный, живой, как настоящий собеседник"""
 )
 
-# Har foydalanuvchining chat session i
 sessions = {}
 
 
@@ -35,8 +35,7 @@ def get_session(uid):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    sessions.pop(uid, None)
+    sessions.pop(update.effective_user.id, None)
     await update.message.reply_text(
         "Привет! 👋 Я помогу вам практиковать русский язык.\n\n"
         "✍️ Напишите мне что-нибудь по-русски\n"
@@ -56,7 +55,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
 
-    # --- Gemini javob ---
     try:
         chat  = get_session(uid)
         resp  = chat.send_message(text)
@@ -68,7 +66,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-    # --- ElevenLabs ovoz ---
     try:
         await context.bot.send_chat_action(update.effective_chat.id, "upload_voice")
         async with httpx.AsyncClient(timeout=30) as http:
@@ -82,28 +79,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 },
             )
         if tts.status_code == 200:
-            await update.message.reply_audio(
-                audio=tts.content,
-                filename="reply.mp3",
-                title="Zamira Russian Bot",
-            )
+            await update.message.reply_audio(audio=tts.content, filename="reply.mp3")
         else:
-            logger.error(f"ElevenLabs {tts.status_code}: {tts.text}")
+            logger.error(f"ElevenLabs {tts.status_code}")
     except Exception as e:
         logger.error(f"Ovoz xato: {e}")
 
 
-def main():
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+async def run():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("Bot ishga tushdi...")
-    app.run_polling()
+    async with app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
+        await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(run())
