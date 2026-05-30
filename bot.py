@@ -18,7 +18,7 @@ ELEVENLABS_VOICE = os.environ.get("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
 
 genai.configure(api_key=GEMINI_KEY)
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-2.0-flash-lite",
     system_instruction="""Ты — AI-собеседник для практики разговорного русского языка.
 Правила:
 1. Отвечай ТОЛЬКО на русском языке, коротко и разговорно (2-4 предложения)
