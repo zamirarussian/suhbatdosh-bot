@@ -74,19 +74,35 @@ def groq_score(text):
 
 
 async def mp3_to_ogg(data):
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        f.write(data); mp3 = f.name
-    ogg = mp3.replace(".mp3", ".ogg")
-    try:
-        subprocess.run(["ffmpeg","-i",mp3,"-c:a","libopus","-b:a","48k",ogg,"-y"], check=True, capture_output=True)
-        with open(ogg,"rb") as f: return f.read()
-    except: return None
-    finally:
-        os.unlink(mp3)
-        if os.path.exists(ogg): os.unlink(ogg)
+    def _convert():
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(data); mp3 = f.name
+        ogg = mp3.replace(".mp3", ".ogg")
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", mp3, "-ar", "48000", "-ac", "1",
+                 "-c:a", "libopus", "-b:a", "48k", ogg],
+                check=True, capture_output=True, timeout=30
+            )
+            with open(ogg, "rb") as fh:
+                return fh.read()
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode(errors="ignore")[:500] if e.stderr else ""
+            logger.error(f"ffmpeg xato (kod {e.returncode}): {stderr}")
+            return None
+        except FileNotFoundError:
+            logger.error("ffmpeg topilmadi — nixpacks.toml'da aptPkgs=['ffmpeg'] to'g'ri o'rnatilganini tekshiring")
+            return None
+        except Exception as e:
+            logger.error(f"mp3_to_ogg kutilmagan xato: {e}")
+            return None
+        finally:
+            if os.path.exists(mp3): os.unlink(mp3)
+            if os.path.exists(ogg): os.unlink(ogg)
+    return await asyncio.to_thread(_convert)
 
 
-async def send_voice(update, text):
+async def send_voice(update, text, reply_markup=None):
     if not EL_KEY: return
     try:
         async with httpx.AsyncClient(timeout=30) as h:
@@ -96,10 +112,14 @@ async def send_voice(update, text):
                 json={"text":text,"model_id":"eleven_multilingual_v2",
                       "voice_settings":{"stability":0.5,"similarity_boost":0.75}}
             )
-        if r.status_code == 200:
-            ogg = await mp3_to_ogg(r.content)
-            if ogg: await update.message.reply_voice(voice=ogg)
-            else: await update.message.reply_audio(audio=r.content, filename="reply.mp3")
+        if r.status_code != 200:
+            logger.error(f"ElevenLabs xato {r.status_code}: {r.text[:300]}")
+            return
+        ogg = await mp3_to_ogg(r.content)
+        if ogg:
+            await update.message.reply_voice(voice=ogg, reply_markup=reply_markup)
+        else:
+            await update.message.reply_audio(audio=r.content, filename="reply.mp3", reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"TTS: {e}")
 
@@ -173,14 +193,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Xatolik. Qayta urinib ko'ring.")
         return
     bot_replies[tid] = reply
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📝 Matn", callback_data=f"txt:{tid}"),
-        InlineKeyboardButton("✅ Xatolar", callback_data=f"err:{tid}")
-    ]])
-    await update.message.reply_text(reply, reply_markup=kb)
     sm = get_streak_msg(streak)
     if sm: await update.message.reply_text(f"🔥 {sm}")
-    await send_voice(update, reply)
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📝 Matnni ko'rish", callback_data=f"txt:{tid}"),
+        InlineKeyboardButton("✅ Xatolar", callback_data=f"err:{tid}")
+    ]])
+    await send_voice(update, reply, reply_markup=kb)
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -200,8 +219,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     last_texts[tid] = text
     kb1 = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📖 Tushuntir", callback_data=f"err:{tid}"),
-        InlineKeyboardButton("🎯 Baho", callback_data=f"score:{tid}")
+        InlineKeyboardButton("✅ Xatolarimni ko'rish", callback_data=f"err:{tid}")
     ]])
     await update.message.reply_text(f"🎤 {text}", reply_markup=kb1)
     try:
@@ -212,11 +230,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sm = get_streak_msg(streak)
     if sm: await update.message.reply_text(f"🔥 {sm}")
     kb2 = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📝 Matn", callback_data=f"txt:{tid}"),
-        InlineKeyboardButton("❓ Yordam", callback_data=f"help:{tid}")
+        InlineKeyboardButton("📝 Matnni ko'rish", callback_data=f"txt:{tid}")
     ]])
-    await send_voice(update, reply)
-    await update.message.reply_text(reply, reply_markup=kb2)
+    await send_voice(update, reply, reply_markup=kb2)
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
