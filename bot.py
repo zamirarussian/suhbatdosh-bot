@@ -86,8 +86,11 @@ async def mp3_to_ogg(data):
         if os.path.exists(ogg): os.unlink(ogg)
 
 
-async def send_voice(update, text):
+async def send_voice(update, text, tid=None):
     if not EL_KEY: return
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📝 Matnni ko\'rish", callback_data=f"txt:{tid}")
+    ]]) if tid is not None else None
     try:
         async with httpx.AsyncClient(timeout=30) as h:
             r = await h.post(
@@ -96,22 +99,17 @@ async def send_voice(update, text):
                 json={
                     "text": text,
                     "model_id": "eleven_multilingual_v2",
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                    "output_format": "opus_48000"
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
                 }
             )
-            if r.status_code == 200:
-                await update.message.reply_voice(voice=r.content)
-                return
-            r2 = await h.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{EL_VOICE}",
-                headers={"xi-api-key": EL_KEY, "Content-Type": "application/json"},
-                json={"text":text,"model_id":"eleven_multilingual_v2",
-                      "voice_settings":{"stability":0.5,"similarity_boost":0.75}}
-            )
-            if r2.status_code == 200:
-                ogg = await mp3_to_ogg(r2.content)
-                if ogg: await update.message.reply_voice(voice=ogg)
+        if r.status_code == 200:
+            ogg = await mp3_to_ogg(r.content)
+            if ogg:
+                await update.message.reply_voice(voice=ogg, reply_markup=kb)
+            else:
+                await update.message.reply_audio(audio=r.content, filename="reply.mp3", reply_markup=kb)
+        else:
+            logger.error(f"ElevenLabs {r.status_code}")
     except Exception as e:
         logger.error(f"TTS: {e}")
 
@@ -185,14 +183,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Xatolik. Qayta urinib ko'ring.")
         return
     bot_replies[tid] = reply
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📝 Matn", callback_data=f"txt:{tid}"),
-        InlineKeyboardButton("✅ Xatolar", callback_data=f"err:{tid}")
-    ]])
-    await update.message.reply_text(reply, reply_markup=kb)
     sm = get_streak_msg(streak)
     if sm: await update.message.reply_text(f"🔥 {sm}")
-    await send_voice(update, reply)
+    await update.message.reply_text(reply)
+    await send_voice(update, reply, tid)
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -212,8 +206,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     last_texts[tid] = text
     kb1 = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📖 Tushuntir", callback_data=f"err:{tid}"),
-        InlineKeyboardButton("🎯 Baho", callback_data=f"score:{tid}")
+        InlineKeyboardButton("✅ Xatolarimni ko'rish", callback_data=f"err:{tid}")
     ]])
     await update.message.reply_text(f"🎤 {text}", reply_markup=kb1)
     try:
@@ -223,12 +216,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_replies[tid] = reply
     sm = get_streak_msg(streak)
     if sm: await update.message.reply_text(f"🔥 {sm}")
-    kb2 = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📝 Matn", callback_data=f"txt:{tid}"),
-        InlineKeyboardButton("❓ Yordam", callback_data=f"help:{tid}")
-    ]])
-    await send_voice(update, reply)
-    await update.message.reply_text(reply, reply_markup=kb2)
+    await send_voice(update, reply, tid)
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
