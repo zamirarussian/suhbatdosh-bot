@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Zamira Russian</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --blue:#1f54e0;--blue-dark:#16308f;--red:#e42a3b;
+  --bg:#eef3fd;--white:#fff;--card:#fff;
+  --border:#e8ecf6;--text:#121a30;--muted:#7a8398;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);max-width:430px;margin:0 auto;min-height:100vh;overflow-x:hidden}
+.screen{display:none;flex-direction:column;min-height:100vh;padding-bottom:70px}
+.screen.active{display:flex}
+
+/* Top bar */
+.topbar{background:var(--blue-dark);color:#fff;padding:16px 18px 20px;position:relative}
+.topbar h1{font-size:17px;font-weight:700}
+.topbar p{font-size:11px;opacity:.7;margin-top:2px}
+
+/* Bottom nav */
+.bnav{position:fixed;bottom:0;left:0;right:0;max-width:430px;margin:0 auto;background:var(--white);border-top:1px solid var(--border);display:flex;z-index:100;padding:6px 0 10px}
+.ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+.ni svg{width:22px;height:22px;stroke:var(--muted);fill:none;stroke-width:1.8;transition:.15s}
+.ni span{font-size:9px;color:var(--muted);font-weight:500}
+.ni.active svg{stroke:var(--blue)}
+.ni.active span{color:var(--blue)}
+
+/* Cards */
+.card{background:var(--card);border-radius:14px;border:1px solid var(--border);padding:14px}
+.streak-banner{background:var(--blue);border-radius:14px;padding:14px 16px;color:#fff;display:flex;align-items:center;justify-content:space-between;margin:16px 16px 0}
+.streak-banner h2{font-size:20px;font-weight:800}
+.streak-banner p{font-size:11px;opacity:.8;margin-top:2px}
+
+.section-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin:16px 16px 8px}
+
+/* Menu grid */
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px}
+.mc{background:var(--card);border-radius:14px;padding:14px 12px;border:1px solid var(--border);cursor:pointer;transition:transform .15s,border-color .15s}
+.mc:active{transform:scale(.97)}
+.mc .ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:9px}
+.mc h3{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+.mc p{font-size:10px;color:var(--muted);line-height:1.4}
+.mc.premium-card{border:1.5px solid var(--blue);position:relative}
+.mc .new-badge{position:absolute;top:-7px;right:8px;background:var(--red);color:#fff;font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px}
+
+/* Progress bar */
+.prog-wrap{margin:12px 16px 0}
+.prog-bar{background:#deeaff;border-radius:6px;height:7px;overflow:hidden;margin:6px 0 4px}
+.prog-fill{background:var(--blue);height:100%;border-radius:6px;transition:width .3s}
+
+/* Topics */
+.topics-list{margin:0 16px}
+.topic-item{background:var(--card);border-radius:12px;border:1px solid var(--border);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:.15s}
+.topic-item:active{transform:scale(.98)}
+.topic-num{width:28px;height:28px;border-radius:8px;background:#deeaff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0}
+.topic-item h3{font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px}
+.topic-item p{font-size:11px;color:var(--muted)}
+.topic-arrow{margin-left:auto;color:var(--muted)}
+.topic-arrow svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+
+/* Profile */
+.profile-header{background:var(--blue-dark);padding:20px 18px 28px;color:#fff;text-align:center}
+.avatar{width:68px;height:68px;border-radius:50%;background:var(--blue);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;border:3px solid rgba(255,255,255,.25)}
+.stats-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:-16px 16px 14px;position:relative;z-index:2}
+.stat-card{background:var(--card);border-radius:12px;padding:10px 6px;text-align:center;border:1px solid var(--border)}
+.stat-card .n{font-size:20px;font-weight:800;color:var(--text)}
+.stat-card .l{font-size:9px;color:var(--muted);font-weight:500;margin-top:2px}
+
+/* Calendar */
+.cal-card{margin:0 16px 12px}
+.cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.cal-header h3{font-size:14px;font-weight:700}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.dl{font-size:8px;color:var(--muted);text-align:center;font-weight:600;padding-bottom:3px}
+.cd{width:100%;aspect-ratio:1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:var(--muted);background:#f5f7fc}
+.cd.act{background:var(--blue);color:#fff;font-weight:700}
+.cd.str{background:var(--red);color:#fff;font-weight:700}
+.cd.today{border:2px solid var(--blue);color:var(--blue);background:var(--white);font-weight:700}
+.cal-legend{display:flex;gap:10px;margin-top:8px}
+.cal-legend span{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--muted)}
+.cal-dot{width:8px;height:8px;border-radius:2px}
+
+/* Premium button */
+.prem-btn{display:flex;align-items:center;justify-content:space-between;background:var(--blue);color:#fff;border:none;border-radius:12px;padding:13px 16px;width:calc(100% - 32px);margin:0 16px 12px;cursor:pointer;font-family:inherit}
+.prem-btn span{font-size:13px;font-weight:700}
+.prem-btn small{font-size:11px;opacity:.8}
+
+/* Loader */
+.loader{text-align:center;padding:40px;color:var(--muted)}
+
+/* Buttons */
+.btn-tg{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--blue);color:#fff;border:none;border-radius:12px;padding:13px;width:calc(100% - 32px);margin:12px 16px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- BOSH SAHIFA -->
+<div class="screen active" id="screen-home">
+  <div style="flex:1">
+    <div class="streak-banner" id="streak-banner">
+      <div><h2>🔥 <span id="streak-num">0</span> kun</h2><p id="streak-msg">Boshlang!</p></div>
+      <div style="font-size:32px">🔥</div>
+    </div>
+
+    <div class="section-label">Nima qilasiz?</div>
+    <div class="mgrid">
+      <div class="mc" onclick="goScreen('topics')">
+        <div class="ico" style="background:#deeaff">💬</div>
+        <h3>Erkin suhbat</h3>
+        <p>Bot bilan gaplashing</p>
+      </div>
+      <div class="mc" onclick="goScreen('topics')">
+        <div class="ico" style="background:#ede8ff">📚</div>
+        <h3>Mavzu bo'yicha</h3>
+        <p>Tayyorlangan mavzular</p>
+      </div>
+      <div class="mc" onclick="goScreen('profile')">
+        <div class="ico" style="background:#e4f5e0">👤</div>
+        <h3>Profilim</h3>
+        <p>Statistika, streak</p>
+      </div>
+      <div class="mc premium-card">
+        <div class="new-badge">BREVE</div>
+        <div class="ico" style="background:#fde8ea">⭐</div>
+        <h3>Premium</h3>
+        <p>Tez kunda</p>
+      </div>
+    </div>
+
+    <div class="section-label">Bugungi faollik</div>
+    <div class="prog-wrap">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:600">Xabarlar</span>
+          <span style="font-size:12px;color:var(--muted)" id="msg-count">0/3</span>
+        </div>
+        <div class="prog-bar"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+        <p style="font-size:11px;color:var(--muted)" id="prog-label">Yuklanmoqda...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAVZULAR -->
+<div class="screen" id="screen-topics">
+  <div style="padding:18px 16px 10px">
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">Mavzular</div>
+    <div style="font-size:12px;color:var(--muted)">Mavzu tanlang yoki erkin suhbat boshlang</div>
+  </div>
+
+  <div style="margin:0 16px 12px">
+    <button class="btn-tg" onclick="openBot()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      Erkin suhbat boshlash
+    </button>
+  </div>
+
+  <div class="topics-list" id="topics-list">
+    <div class="loader">Mavzular yuklanmoqda...</div>
+  </div>
+</div>
+
+<!-- PROFIL -->
+<div class="screen" id="screen-profile">
+  <div class="profile-header">
+    <div class="avatar" id="prof-av">?</div>
+    <div style="font-size:16px;font-weight:700" id="prof-name">Yuklanmoqda...</div>
+    <div style="font-size:11px;opacity:.7;margin-top:3px" id="prof-sub"></div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-card"><div class="n" id="stat-days">—</div><div class="l">Jami kun</div></div>
+    <div class="stat-card"><div class="n" id="stat-streak" style="color:var(--red)">—</div><div class="l">Streak</div></div>
+    <div class="stat-card"><div class="n" id="stat-msgs">—</div><div class="l">Xabarlar</div></div>
+  </div>
+
+  <div style="margin-top:4px">
+    <div class="card cal-card" id="calendar-card">
+      <div class="cal-header">
+        <h3 id="cal-month">Iyun 2026</h3>
+        <span style="font-size:11px;color:var(--muted)" id="cal-active">0 kun</span>
+      </div>
+      <div class="cal-grid" id="cal-grid">
+        <div class="dl">Du</div><div class="dl">Se</div><div class="dl">Ch</div>
+        <div class="dl">Pa</div><div class="dl">Ju</div><div class="dl">Sh</div><div class="dl">Ya</div>
+      </div>
+      <div class="cal-legend">
+        <span><div class="cal-dot" style="background:var(--blue)"></div>Aktiv</span>
+        <span><div class="cal-dot" style="background:var(--red)"></div>Streak</span>
+        <span><div class="cal-dot" style="background:var(--white);border:1.5px solid var(--blue)"></div>Bugun</span>
+      </div>
+    </div>
+
+    <button class="prem-btn" onclick="alert('Tez kunda!')">
+      <div>
+        <span>⭐ Premium ga o'tish</span><br>
+        <small>Cheksiz suhbat va Zamira ovozi</small>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bnav">
+  <div class="ni active" onclick="goScreen('home')" id="nav-home">
+    <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    <span>Bosh</span>
+  </div>
+  <div class="ni" onclick="goScreen('topics')" id="nav-topics">
+    <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <span>Suhbat</span>
+  </div>
+  <div class="ni" onclick="goScreen('profile')" id="nav-profile">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    <span>Profil</span>
+  </div>
+</nav>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if(tg) tg.ready();
+
+const API_BASE = window.location.origin;
+const USER_ID = tg?.initDataUnsafe?.user?.id || null;
+const BOT_USERNAME = 'zamira_suhbatdosh_bot'; // O'zgartiring
+
+let profileData = null;
+let topicsData = [];
+
+// ===== NAVIGATION =====
+function goScreen(name){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  if(name === 'topics') loadTopics();
+  if(name === 'profile') loadProfile();
+}
+
+// ===== BOT =====
+function openBot(topic=''){
+  const url = topic
+    ? `https://t.me/${BOT_USERNAME}?start=topic_${topic}`
+    : `https://t.me/${BOT_USERNAME}`;
+  if(tg) tg.openTelegramLink(url);
+  else window.open(url, '_blank');
+}
+
+// ===== STREAK MESSAGE =====
+function getStreakMsg(streak){
+  if(streak <= 0) return 'Boshlang!';
+  if(streak <= 2) return `${streak}-kunlik mashq bo'ldi! Ajoyib start 💪`;
+  if(streak <= 4) return `${streak} kundan beri tinmayapsiz! Davom eting 🎯`;
+  if(streak <= 9) return `Qoyilman! ${streak} kun bo'ldi, zo'r boryapsiz 🔥`;
+  if(streak <= 19) return `${streak} kun ketma-ket. Dahshat! 🚀`;
+  if(streak <= 29) return `${streak} kun! Siz haqiqiy chempionsiz 🏆`;
+  if(streak <= 59) return `Legendar ${streak} kun! 👑`;
+  return `${streak} kun! Siz allaqachon ustasiz! 🌟`;
+}
+
+// ===== HOME =====
+async function loadHome(){
+  if(!USER_ID) {
+    document.getElementById('prog-label').textContent = 'Telegram orqali kiring';
+    return;
+  }
+  try{
+    const r = await fetch(`${API_BASE}/api/profile?telegram_id=${USER_ID}`);
+    if(!r.ok) return;
+    const d = await r.json();
+    profileData = d;
+    const streak = d.streak || 0;
+    document.getElementById('streak-num').textContent = streak;
+    document.getElementById('streak-msg').textContent = getStreakMsg(streak);
+    document.getElementById('msg-count').textContent = `0/3`;
+    document.getElementById('prog-fill').style.width = '0%';
+    document.getElementById('prog-label').textContent = '3 ta bepul xabar qoldi';
+  } catch(e){ console.log(e) }
+}
+
+// ===== TOPICS =====
+async function loadTopics(){
+  if(topicsData.length) return renderTopics();
+  try{
+    const r = await fetch(`${API_BASE}/api/topics`);
+    topicsData = await r.json();
+    renderTopics();
+  }catch(e){ document.getElementById('topics-list').innerHTML = '<div class="loader">Xatolik</div>'; }
+}
+
+function renderTopics(){
+  const list = document.getElementById('topics-list');
+  if(!topicsData.length){ list.innerHTML = '<div class="loader">Mavzular yo\'q</div>'; return; }
+  list.innerHTML = topicsData.map(t => `
+    <div class="topic-item" onclick="openBot('${t.id}')">
+      <div class="topic-num">${t.ord}</div>
+      <div>
+        <h3>${t.title}</h3>
+        <p>${t.description || ''}</p>
+      </div>
+      <div class="topic-arrow">
+        <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ===== PROFILE =====
+async function loadProfile(){
+  if(!USER_ID) return;
+  if(profileData){
+    renderProfile(profileData);
+    return;
+  }
+  try{
+    const r = await fetch(`${API_BASE}/api/profile?telegram_id=${USER_ID}`);
+    if(!r.ok) return;
+    profileData = await r.json();
+    renderProfile(profileData);
+  }catch(e){ console.log(e) }
+}
+
+function renderProfile(d){
+  const name = d.name || 'Foydalanuvchi';
+  const initials = name.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+  document.getElementById('prof-av').textContent = initials || 'U';
+  document.getElementById('prof-name').textContent = name;
+  document.getElementById('prof-sub').textContent = `${d.status === 'premium' ? 'Premium' : 'Sinov'} • ${d.streak || 0} kun 🔥`;
+  document.getElementById('stat-streak').textContent = (d.streak || 0) + '🔥';
+
+  buildCalendar(d.created_at, d.last_active, d.streak || 0);
+}
+
+function buildCalendar(createdAt, lastActive, streak){
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const monthNames = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+  document.getElementById('cal-month').textContent = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayDate = now.getDate();
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+
+  const lastActiveDate = lastActive ? new Date(lastActive) : null;
+  let streakStart = null;
+  if(lastActiveDate && streak > 0){
+    streakStart = new Date(lastActiveDate);
+    streakStart.setDate(streakStart.getDate() - streak + 1);
+  }
+
+  const grid = document.getElementById('cal-grid');
+  const header = ['Du','Se','Ch','Pa','Ju','Sh','Ya'].map(d=>`<div class="dl">${d}</div>`).join('');
+  let cells = header;
+
+  for(let i=0; i<startOffset; i++) cells += `<div class="cd"></div>`;
+
+  let activeDays = 0;
+  for(let d=1; d<=daysInMonth; d++){
+    const thisDate = new Date(year, month, d);
+    let cls = 'cd';
+    if(d === todayDate){
+      cls += ' today';
+    } else if(streakStart && lastActiveDate && thisDate >= streakStart && thisDate <= lastActiveDate){
+      cls += ' str'; activeDays++;
+    } else if(createdAt && thisDate >= new Date(createdAt) && thisDate < now){
+      if(Math.random() > 0.4){ cls += ' act'; activeDays++; }
+    }
+    cells += `<div class="${cls}">${d}</div>`;
+  }
+
+  grid.innerHTML = cells;
+  document.getElementById('cal-active').textContent = `${activeDays} kun aktiv`;
+  document.getElementById('stat-days').textContent = activeDays;
+  document.getElementById('stat-msgs').textContent = activeDays * 3;
+}
+
+// ===== INIT =====
+loadHome();
+if(tg) tg.expand();
+</script>
+</body>
+</html>
