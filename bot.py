@@ -1,5 +1,4 @@
 import os
-import shutil
 import asyncio
 import logging
 import tempfile
@@ -27,22 +26,6 @@ EL_VOICE   = os.environ.get("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")
 
 groq = Groq(api_key=GROQ_KEY)
-
-# ===== FFMPEG STARTUP CHECK =====
-# Bu tekshiruv bot ishga tushishi bilan (birinchi ovozli xabar kutmasdan)
-# Railway logiga ffmpeg topilganmi-yo'qmi aniq yozadi.
-FFMPEG_PATH = shutil.which("ffmpeg")
-if FFMPEG_PATH:
-    try:
-        v = subprocess.run([FFMPEG_PATH, "-version"], capture_output=True, text=True, timeout=10)
-        first_line = v.stdout.splitlines()[0] if v.stdout else "?"
-        logger.info(f"[FFMPEG OK] Topildi: {FFMPEG_PATH} — {first_line}")
-    except Exception as e:
-        logger.error(f"[FFMPEG XATO] Topildi lekin ishlamayapti: {e}")
-else:
-    logger.error("[FFMPEG YO'Q] ffmpeg PATH'da topilmadi! nixpacks.toml'da "
-                 "[phases.setup] aptPkgs=['ffmpeg'] borligini tekshiring va "
-                 "Railway'da 'Clear build cache' qilib qayta deploy qiling.")
 
 SYSTEM = {"role": "system", "content": """Ты — собеседник для практики разговорного русского языка.
 1. Отвечай коротко — 1-2 предложения, без вступлений
@@ -91,69 +74,44 @@ def groq_score(text):
 
 
 async def mp3_to_ogg(data):
-    """mp3 baytlarni Telegram voice-note uchun ogg/opus baytlarga o'giradi.
-    Muvaffaqiyatsiz bo'lsa None qaytaradi va sababini logga yozadi."""
-    if not FFMPEG_PATH:
-        logger.error("mp3_to_ogg: ffmpeg mavjud emas, konvertatsiya o'tkazib yuborildi")
-        return None
-
-    def _convert():
-        mp3 = ogg = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-                f.write(data)
-                mp3 = f.name
-            ogg = mp3.replace(".mp3", ".ogg")
-            result = subprocess.run(
-                [FFMPEG_PATH, "-y", "-i", mp3, "-ar", "48000", "-ac", "1",
-                 "-c:a", "libopus", "-b:a", "48k", ogg],
-                capture_output=True, timeout=30
-            )
-            if result.returncode != 0:
-                stderr = result.stderr.decode(errors="ignore")[-800:]
-                logger.error(f"ffmpeg qaytish kodi {result.returncode}: {stderr}")
-                return None
-            if not os.path.exists(ogg) or os.path.getsize(ogg) == 0:
-                logger.error("ffmpeg 0 baytli yoki mavjud bo'lmagan ogg fayl yaratdi")
-                return None
-            with open(ogg, "rb") as fh:
-                return fh.read()
-        except subprocess.TimeoutExpired:
-            logger.error("ffmpeg 30 soniyada tugamadi (timeout)")
-            return None
-        except Exception as e:
-            logger.error(f"mp3_to_ogg kutilmagan xato: {e}")
-            return None
-        finally:
-            for p in (mp3, ogg):
-                if p and os.path.exists(p):
-                    try: os.unlink(p)
-                    except Exception: pass
-
-    return await asyncio.to_thread(_convert)
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        f.write(data); mp3 = f.name
+    ogg = mp3.replace(".mp3", ".ogg")
+    try:
+        subprocess.run(["ffmpeg","-i",mp3,"-c:a","libopus","-b:a","48k",ogg,"-y"], check=True, capture_output=True)
+        with open(ogg,"rb") as f: return f.read()
+    except: return None
+    finally:
+        os.unlink(mp3)
+        if os.path.exists(ogg): os.unlink(ogg)
 
 
-async def send_voice(update, text, reply_markup=None):
-    if not EL_KEY:
-        logger.error("send_voice: ELEVENLABS_API_KEY o'rnatilmagan")
-        return
+async def send_voice(update, text):
+    if not EL_KEY: return
     try:
         async with httpx.AsyncClient(timeout=30) as h:
             r = await h.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{EL_VOICE}",
                 headers={"xi-api-key": EL_KEY, "Content-Type": "application/json"},
-                json={"text": text, "model_id": "eleven_multilingual_v2",
-                      "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
+                json={
+                    "text": text,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                    "output_format": "opus_48000"
+                }
             )
-        if r.status_code != 200:
-            logger.error(f"ElevenLabs xato {r.status_code}: {r.text[:300]}")
-            return
-        ogg = await mp3_to_ogg(r.content)
-        if ogg:
-            await update.message.reply_voice(voice=ogg, reply_markup=reply_markup)
-        else:
-            logger.warning("send_voice: ogg konvertatsiya muvaffaqiyatsiz, mp3 fayl fallback sifatida yuborilyapti")
-            await update.message.reply_audio(audio=r.content, filename="reply.mp3", reply_markup=reply_markup)
+            if r.status_code == 200:
+                await update.message.reply_voice(voice=r.content)
+                return
+            r2 = await h.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{EL_VOICE}",
+                headers={"xi-api-key": EL_KEY, "Content-Type": "application/json"},
+                json={"text":text,"model_id":"eleven_multilingual_v2",
+                      "voice_settings":{"stability":0.5,"similarity_boost":0.75}}
+            )
+            if r2.status_code == 200:
+                ogg = await mp3_to_ogg(r2.content)
+                if ogg: await update.message.reply_voice(voice=ogg)
     except Exception as e:
         logger.error(f"TTS: {e}")
 
@@ -227,13 +185,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Xatolik. Qayta urinib ko'ring.")
         return
     bot_replies[tid] = reply
-    sm = get_streak_msg(streak)
-    if sm: await update.message.reply_text(f"🔥 {sm}")
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📝 Matnni ko'rish", callback_data=f"txt:{tid}"),
+        InlineKeyboardButton("📝 Matn", callback_data=f"txt:{tid}"),
         InlineKeyboardButton("✅ Xatolar", callback_data=f"err:{tid}")
     ]])
-    await send_voice(update, reply, reply_markup=kb)
+    await update.message.reply_text(reply, reply_markup=kb)
+    sm = get_streak_msg(streak)
+    if sm: await update.message.reply_text(f"🔥 {sm}")
+    await send_voice(update, reply)
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -253,7 +212,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     last_texts[tid] = text
     kb1 = InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Xatolarimni ko'rish", callback_data=f"err:{tid}")
+        InlineKeyboardButton("📖 Tushuntir", callback_data=f"err:{tid}"),
+        InlineKeyboardButton("🎯 Baho", callback_data=f"score:{tid}")
     ]])
     await update.message.reply_text(f"🎤 {text}", reply_markup=kb1)
     try:
@@ -264,9 +224,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sm = get_streak_msg(streak)
     if sm: await update.message.reply_text(f"🔥 {sm}")
     kb2 = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📝 Matnni ko'rish", callback_data=f"txt:{tid}")
+        InlineKeyboardButton("📝 Matn", callback_data=f"txt:{tid}"),
+        InlineKeyboardButton("❓ Yordam", callback_data=f"help:{tid}")
     ]])
-    await send_voice(update, reply, reply_markup=kb2)
+    await send_voice(update, reply)
+    await update.message.reply_text(reply, reply_markup=kb2)
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
