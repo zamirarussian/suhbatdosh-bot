@@ -74,16 +74,15 @@ def groq_score(text):
 
 
 async def mp3_to_ogg(data):
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        f.write(data); mp3 = f.name
-    ogg = mp3.replace(".mp3", ".ogg")
     try:
-        subprocess.run(["ffmpeg","-i",mp3,"-c:a","libopus","-b:a","48k",ogg,"-y"], check=True, capture_output=True)
-        with open(ogg,"rb") as f: return f.read()
-    except: return None
-    finally:
-        os.unlink(mp3)
-        if os.path.exists(ogg): os.unlink(ogg)
+        proc = subprocess.run(
+            ["ffmpeg", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "48k", "-f", "ogg", "pipe:1"],
+            input=data, capture_output=True, check=True
+        )
+        return proc.stdout if proc.stdout else None
+    except Exception as e:
+        logger.error(f"ffmpeg pipe: {e}")
+        return None
 
 
 async def send_voice(update, text, tid=None):
