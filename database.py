@@ -11,6 +11,13 @@ def db():
     return conn
 
 
+def _add_col(c, table, col, coltype):
+    try:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+    except sqlite3.OperationalError:
+        pass  # ustun allaqachon bor
+
+
 def init():
     c = db()
     c.execute("""CREATE TABLE IF NOT EXISTS users (
@@ -24,6 +31,13 @@ def init():
         msg_date TEXT,
         created_at TEXT DEFAULT (date('now'))
     )""")
+    # Dars-asosli suhbat/imtihon holati uchun yangi ustunlar (mavjud bazaga migratsiya)
+    _add_col(c, "users", "mode", "TEXT DEFAULT ''")
+    _add_col(c, "users", "cur_level", "TEXT DEFAULT ''")
+    _add_col(c, "users", "cur_day", "INTEGER")
+    _add_col(c, "users", "cur_week", "INTEGER")
+    _add_col(c, "users", "exam_step", "INTEGER DEFAULT 0")
+
     c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY, value TEXT
     )""")
@@ -149,6 +163,24 @@ def get_streak_msg(streak):
         elif r["range_start"] <= streak <= r["range_end"]:
             return r["message"].replace("{streak}", str(streak))
     return None
+
+
+# ===== DARS-ASOSLI SUHBAT / IMTIHON HOLATI =====
+def set_mode(tid, mode, level=None, day=None, week=None):
+    kw = {"mode": mode, "exam_step": 0}
+    if level is not None: kw["cur_level"] = level
+    if day is not None: kw["cur_day"] = day
+    if week is not None: kw["cur_week"] = week
+    update_user(tid, **kw)
+
+def clear_mode(tid):
+    update_user(tid, mode="", cur_level="", cur_day=None, cur_week=None, exam_step=0)
+
+def inc_exam_step(tid):
+    u = get_user(tid)
+    step = (u["exam_step"] or 0) + 1 if u else 1
+    update_user(tid, exam_step=step)
+    return step
 
 
 # ===== HISTORY =====
