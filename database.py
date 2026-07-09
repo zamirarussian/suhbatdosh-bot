@@ -37,6 +37,9 @@ def init():
     _add_col(c, "users", "cur_day", "INTEGER")
     _add_col(c, "users", "cur_week", "INTEGER")
     _add_col(c, "users", "exam_step", "INTEGER DEFAULT 0")
+    # Har bir user uchun alohida kunlik xabar limiti: NULL = standart (free_limit),
+    # 0 = cheksiz, musbat son = shu userga xos limit
+    _add_col(c, "users", "daily_limit", "INTEGER")
 
     c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY, value TEXT
@@ -121,20 +124,38 @@ def update_user(tid, **kw):
     f = ",".join(f"{k}=?" for k in kw)
     c = db(); c.execute(f"UPDATE users SET {f} WHERE telegram_id=?", list(kw.values())+[tid]); c.commit(); c.close()
 
+def effective_daily_limit(u):
+    """None = cheksiz, son = shu userga qo'llanadigan kunlik xabar limiti.
+    u['daily_limit']: NULL -> standart qiymat ishlatiladi (status'ga qarab),
+    0 -> cheksiz, musbat son -> shu userga xos aniq limit (statusdan qat'i nazar)."""
+    dl = u["daily_limit"] if "daily_limit" in u.keys() else None
+    if dl is not None:
+        return None if dl == 0 else dl
+    if u["status"] == "premium":
+        return None
+    return int(gs("free_limit") or 3)
+
 def check_access(tid):
     u = get_user(tid)
     if not u: return "new"
     if u["status"] == "blocked": return "blocked"
-    if u["status"] == "premium": return "ok"
-    if u["status"] in ("trial",):
+    if u["status"] == "trial":
         start = datetime.strptime(u["trial_start"], "%Y-%m-%d").date()
         if date.today() > start + timedelta(days=u["trial_days"] or 3):
             update_user(tid, status="expired"); return "expired"
+    elif u["status"] == "expired":
+        return "expired"
+    limit = effective_daily_limit(u)
+    if limit is not None:
         today = str(date.today())
         count = u["msg_today"] if u["msg_date"] == today else 0
-        if count >= int(gs("free_limit") or 3): return "limit"
-        return "ok"
-    return "expired"
+        if count >= limit:
+            return "limit"
+    return "ok"
+
+def set_daily_limit(tid, value):
+    """value: None -> standart qiymatga qaytarish, 0 -> cheksiz, musbat son -> shu userga xos limit"""
+    update_user(tid, daily_limit=value)
 
 def inc_msg(tid):
     today = str(date.today())
