@@ -165,7 +165,9 @@ async def check(update, tid):
         await update.message.reply_text(gs("trial_expired_text") or "Sinov muddati tugadi.")
         return False
     if a == "limit":
-        lim = gs("free_limit") or "3"
+        from database import effective_daily_limit
+        u = get_user(tid)
+        lim = effective_daily_limit(u) if u else (gs("free_limit") or 3)
         await update.message.reply_text(f"⏰ Bugungi {lim} ta xabaringiz tugadi. Ertaga davom eting!")
         return False
     return True
