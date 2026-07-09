@@ -196,9 +196,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         set_mode(tid, "daily", level=level, day=day)
         lesson_system[tid] = build_daily_prompt(lesson)
-        await update.message.reply_text(
-            f"Salom! Bugun «{lesson.get('topic','')}» mavzusida gaplashamiz. Tayyormisiz? Ketdik! 🚀"
-        )
+        tpl = gs("daily_start_text") or "Salom! Bugun «{topic}» mavzusida gaplashamiz. Tayyormisiz?"
+        text = tpl.replace("{topic}", lesson.get("topic", ""))
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Ketdik!", callback_data=f"godaily:{tid}")]])
+        await update.message.reply_text(text, reply_markup=kb)
         return
 
     if len(parts) == 3 and parts[0] == "ex":
@@ -340,6 +341,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not t: return
         await q.message.reply_text("🎯 Baholayman...")
         await q.message.reply_text(groq_score(t))
+    elif d.startswith("godaily:"):
+        if lesson_system.get(uid) is None:
+            await q.message.reply_text("Sessiya eskirgan, iltimos ilovadan qayta kiring.")
+            return
+        await context.bot.send_chat_action(q.message.chat_id, "typing")
+        class _FauxUpdate:
+            def __init__(self, message): self.message = message
+        await _process_turn(_FauxUpdate(q.message), uid, "Salom, men tayyorman. Boshladik.")
     elif d.startswith("help:"):
         await q.message.reply_text(
             "💡 *Yordam:*\n\n🎤 Ovoz yuboring\n✍️ Matn yozing\n"
