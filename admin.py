@@ -3,7 +3,7 @@ import requests as req
 from functools import wraps
 from datetime import date, timedelta
 from flask import Flask, request, redirect, session, render_template_string, jsonify, send_from_directory
-from database import db, gs, ss, get_users_for_broadcast
+from database import db, gs, ss, get_users_for_broadcast, get_user, set_daily_limit, effective_daily_limit
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "zamira2024")
@@ -149,8 +149,24 @@ def users():
             c.execute("UPDATE users SET status='blocked' WHERE telegram_id=?", (tid,))
         elif action == "unblock":
             c.execute("UPDATE users SET status='trial', trial_start=? WHERE telegram_id=?", (today, tid))
+        elif action == "setlimit":
+            raw = (request.form.get("limit_val","") or "").strip().lower()
+            if raw in ("", "standart", "default", "-"):
+                c.execute("UPDATE users SET daily_limit=NULL WHERE telegram_id=?", (tid,))
+                msg = '<div class="al">✅ Standart limitga qaytarildi</div>'
+            elif raw in ("cheksiz", "unlimited", "0", "inf", "∞"):
+                c.execute("UPDATE users SET daily_limit=0 WHERE telegram_id=?", (tid,))
+                msg = '<div class="al">✅ Bu userga cheksiz xabar ruxsat etildi</div>'
+            else:
+                try:
+                    n = max(1, int(raw))
+                    c.execute("UPDATE users SET daily_limit=? WHERE telegram_id=?", (n, tid))
+                    msg = f'<div class="al">✅ Bu userga kunlik limit: {n} ta xabar</div>'
+                except ValueError:
+                    msg = '<div class="al" style="background:#fde8ea;color:#c42b3a">⚠️ Noto\'g\'ri qiymat</div>'
         c.commit()
-        msg = '<div class="al">✅ Bajarildi</div>'
+        if not msg:
+            msg = '<div class="al">✅ Bajarildi</div>'
 
     q = request.args.get("q","")
     sf = request.args.get("s","all")
@@ -173,17 +189,26 @@ def users():
         bc = bm.get(r["status"],"sbe")
         sl = {"premium":"Premium","trial":"Sinov","expired":"Tugagan","blocked":"Bloklangan"}.get(r["status"],r["status"])
         m = r["msg_today"] if r["msg_date"]==today else 0
-        lim = "∞" if r["status"]=="premium" else gs("free_limit") or "3"
+        eff_lim = effective_daily_limit(r)
+        lim_disp = "∞" if eff_lim is None else str(eff_lim)
+        is_custom = r["daily_limit"] is not None
+        lim_badge = f' <span style="color:#1f54e0;font-size:10px">(maxsus)</span>' if is_custom else ""
         opts = ""
         if r["status"]=="premium": opts='<option value="trial">Sinovga</option><option value="blocked">Bloklash</option>'
         elif r["status"] in ("trial","expired"): opts='<option value="premium">✅ Premium</option><option value="extend">🔄 +3 kun</option><option value="blocked">🚫 Bloklash</option>'
         elif r["status"]=="blocked": opts='<option value="unblock">🔓 Ochish</option><option value="premium">✅ Premium</option>'
         rh += f"""<tr><td>{r["name"] or "—"}</td><td style="color:#7a8398">{r["telegram_id"]}</td>
-        <td>{"🔥"+str(r["streak"]) if r["streak"] else "—"}</td><td>{m}/{lim}</td><td>{r["last_active"] or "—"}</td>
+        <td>{"🔥"+str(r["streak"]) if r["streak"] else "—"}</td><td>{m}/{lim_disp}{lim_badge}</td><td>{r["last_active"] or "—"}</td>
         <td><span class="{bc}">{sl}</span></td>
-        <td><form method="POST" style="display:flex;gap:4px"><input type="hidden" name="tid" value="{r["telegram_id"]}">
+        <td><div style="display:flex;flex-direction:column;gap:4px">
+        <form method="POST" style="display:flex;gap:4px"><input type="hidden" name="tid" value="{r["telegram_id"]}">
         <select name="action" style="width:auto;font-size:11px;padding:2px 5px"><option value="">Amal...</option>{opts}</select>
-        <button type="submit" class="btn bo bs">OK</button></form></td></tr>"""
+        <button type="submit" class="btn bo bs">OK</button></form>
+        <form method="POST" style="display:flex;gap:4px"><input type="hidden" name="tid" value="{r["telegram_id"]}">
+        <input type="hidden" name="action" value="setlimit">
+        <input name="limit_val" placeholder="son/cheksiz/standart" style="width:auto;font-size:11px;padding:2px 5px;max-width:120px">
+        <button type="submit" class="btn bo bs">Limit</button></form>
+        </div></td></tr>"""
 
     filt = "".join(f'<option value="{v}" {"selected" if sf==v else ""}>{l}</option>'
                    for v,l in [("all","Hammasi"),("premium","Premium"),("trial","Sinov"),("expired","Tugagan"),("blocked","Bloklangan")])
