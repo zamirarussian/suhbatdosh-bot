@@ -67,6 +67,7 @@ def init():
 def _seed(c):
     defs = {
         "free_limit": "3",
+        "exam_questions": "5",
         "admin_login": "admin",
         "admin_password": "zamira2024",
         "welcome_text": "Salom! 👋 Men Zamira — rus tili muallimingizman.\n\n3 kunlik bepul sinov boshlaylikmi? 🚀",
