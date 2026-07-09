@@ -351,7 +351,7 @@ def settings():
     if request.method == "POST":
         sec = request.form.get("sec")
         if sec == "bot":
-            for k in ["free_limit","exam_questions","welcome_text","welcome_media_type","welcome_media_file_id",
+            for k in ["free_limit","exam_questions","daily_start_text","welcome_text","welcome_media_type","welcome_media_file_id",
                       "daily_text","daily_media_type","daily_media_file_id","daily_time",
                       "daily_target","trial_expired_text"]:
                 ss(k, request.form.get(k,""))
@@ -374,6 +374,8 @@ def settings():
     <input type="hidden" name="sec" value="bot">
     <div class="fg"><label>Bepul kunlik limit</label><input type="number" name="free_limit" value="{g('free_limit') or '3'}"></div>
     <div class="fg"><label>🎓 Imtihon — hafta oxirida nechta savol beriladi</label><input type="number" min="1" name="exam_questions" value="{g('exam_questions') or '5'}"></div>
+    <div class="fg"><label>📚 Kunlik dars — boshlash xabari (ilovadan kirganda). <code>{{topic}}</code> — kun mavzusi avtomatik qo'yiladi</label>
+    <textarea name="daily_start_text" rows="2">{g('daily_start_text') or "Salom! Bugun «{topic}» mavzusida gaplashamiz. Tayyormisiz?"}</textarea></div>
     <div class="fg"><label>Salomlashuv matni</label><textarea name="welcome_text" rows="3">{g('welcome_text')}</textarea></div>
     <div class="two"><div class="fg"><label>Media turi</label><select name="welcome_media_type">{mo(g('welcome_media_type'))}</select></div>
     <div class="fg"><label>File ID</label><input name="welcome_media_file_id" value="{g('welcome_media_file_id')}"></div></div>
