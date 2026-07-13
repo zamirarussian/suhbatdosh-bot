@@ -38,11 +38,15 @@ def get_week_lessons(level, week):
 def build_daily_prompt(lesson):
     vocab = ", ".join(f"{v.get('ru','')} ({v.get('uz','')})" for v in lesson.get("vocab", [])[:15])
     formulas = "; ".join(f.get("ru", "") for f in lesson.get("formulas", [])[:8])
+    topic = lesson.get("topic", "")
     return (
         "Sen rus tili o'qituvchisisan (ismin Zamira). Faqat quyidagi darslik asosida gaplash. "
-        f"Mavzu: {lesson.get('topic','')}. Foydalanuvchi darajasi: {lesson.get('level','')}. "
+        f"Mavzu: {topic}. Foydalanuvchi darajasi: {lesson.get('level','')}. "
         f"Darslik so'zlari: {vocab}. Iboralar: {formulas}. "
-        "Foydalanuvchiga shu so'z va iboralar bilan ruscha oddiy savol ber, javobini kut. "
+        "MUHIM: bu suhbatning ENG BIRINCHI xabari. O'zingni tanishtirma, salomlashishdan boshlama. "
+        f"Xabaringni aynan shu qolipda boshla: «Сегодня поговорим на тему «{topic}».» — so'ng darhol "
+        "shu mavzudagi oddiy ruscha savol ber (bitta gap). Boshqa hech narsa qo'shma. "
+        "Keyingi xabarlaringda: foydalanuvchiga shu so'z va iboralar bilan ruscha oddiy savol ber, javobini kut. "
         "Xato qilsa — yumshoq to'g'irla va rag'batlantir. Darajadan qiyin so'z ishlatma. Darslikdan chiqma. "
         "Har javobing 1-3 gap, oxirida bitta savol. Faqat ruscha yoz."
     )
@@ -57,6 +61,8 @@ def build_exam_prompt(lessons, level):
     return (
         f"Bu hafta yakuni og'zaki imtihoni. Daraja: {level}. Mavzular: {topics}. "
         f"Shu so'zlardan foydalan: {vocab}. "
+        "MUHIM: bu suhbatning ENG BIRINCHI xabari. O'zingni tanishtirma, uzoq salomlashma. "
+        "Darhol birinchi savolni ber (bitta gap). "
         "Foydalanuvchiga bittadan ketma-ket og'zaki savol ber (bir vaqtda faqat bitta savol). "
         "Har javobni qisqa baholang, keyin keyingi savolga o'ting. Faqat ruscha yoz."
     )
