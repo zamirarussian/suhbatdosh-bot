@@ -23,6 +23,7 @@ GROQ_KEY   = os.environ["GROQ_API_KEY"]
 YANDEX_API_KEY   = os.environ.get("YANDEX_API_KEY", "")
 YANDEX_FOLDER_ID = os.environ.get("YANDEX_FOLDER_ID", "")
 YANDEX_VOICE     = os.environ.get("YANDEX_VOICE", "jane")
+YANDEX_ROLE      = os.environ.get("YANDEX_ROLE", "good")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")
 def get_exam_questions_count():
     try:
@@ -89,17 +90,21 @@ async def send_voice(update, text, reply_markup=None):
     if not (YANDEX_API_KEY and YANDEX_FOLDER_ID):
         return
     try:
+        payload = {
+            "text": text,
+            "lang": "ru-RU",
+            "voice": YANDEX_VOICE,
+            "folderId": YANDEX_FOLDER_ID,
+            "format": "oggopus",
+        }
+        # "emotion" faqat jane/omazh ovozlari uchun rasmiy qo'llab-quvvatlanadi
+        if YANDEX_VOICE in ("jane", "omazh") and YANDEX_ROLE:
+            payload["emotion"] = YANDEX_ROLE
         async with httpx.AsyncClient(timeout=30) as h:
             r = await h.post(
                 "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize",
                 headers={"Authorization": f"Api-Key {YANDEX_API_KEY}"},
-                data={
-                    "text": text,
-                    "lang": "ru-RU",
-                    "voice": YANDEX_VOICE,
-                    "folderId": YANDEX_FOLDER_ID,
-                    "format": "oggopus",
-                }
+                data=payload
             )
         if r.status_code != 200:
             logger.error(f"Yandex TTS {r.status_code}: {r.text[:300]}")
@@ -179,7 +184,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 {week}-hafta og'zaki imtihoni boshlandi! {get_exam_questions_count()} ta savol beraman. Tayyor bo'lsangiz javob yozing yoki ovoz yuboring."
         )
         try:
-            reply = groq_chat(tid, "Boshladik", lesson_system[tid])
+            reply = groq_chat(tid, "Начинаем.", lesson_system[tid])
             await send_voice(update, reply)
             await update.message.reply_text(reply)
         except Exception as e:
@@ -313,7 +318,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_chat_action(q.message.chat_id, "typing")
         class _FauxUpdate:
             def __init__(self, message): self.message = message
-        await _process_turn(_FauxUpdate(q.message), uid, "Salom, men tayyorman. Boshladik.")
+        await _process_turn(_FauxUpdate(q.message), uid, "Начинаем.")
     elif d.startswith("help:"):
         await q.message.reply_text(
             "💡 *Yordam:*\n\n🎤 Ovoz yuboring\n✍️ Matn yozing\n"
