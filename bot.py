@@ -1,9 +1,5 @@
 import os
-import shutil
-import asyncio
 import logging
-import tempfile
-import subprocess
 import httpx
 from groq import Groq
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -24,8 +20,9 @@ logger = logging.getLogger(__name__)
 
 TOKEN      = os.environ["TELEGRAM_TOKEN"]
 GROQ_KEY   = os.environ["GROQ_API_KEY"]
-EL_KEY     = os.environ.get("ELEVENLABS_API_KEY", "")
-EL_VOICE   = os.environ.get("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+YANDEX_API_KEY   = os.environ.get("YANDEX_API_KEY", "")
+YANDEX_FOLDER_ID = os.environ.get("YANDEX_FOLDER_ID", "")
+YANDEX_VOICE     = os.environ.get("YANDEX_VOICE", "jane")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")
 def get_exam_questions_count():
     try:
@@ -46,11 +43,10 @@ bot_replies = {}
 last_texts = {}
 lesson_system = {}   # tid -> joriy dars/imtihon system prompt (xotirada)
 
-FFMPEG_PATH = shutil.which("ffmpeg")
-if FFMPEG_PATH:
-    logger.info(f"[FFMPEG OK] {FFMPEG_PATH}")
+if YANDEX_API_KEY and YANDEX_FOLDER_ID:
+    logger.info("[YANDEX TTS OK] sozlangan")
 else:
-    logger.error("[FFMPEG YO'Q] nixpacks.toml'da aptPkgs=['ffmpeg'] tekshiring")
+    logger.error("[YANDEX TTS YO'Q] YANDEX_API_KEY / YANDEX_FOLDER_ID o'rnatilmagan")
 
 
 def groq_chat(tid, text, system_override=None):
@@ -89,58 +85,27 @@ def groq_score(text):
     return resp.choices[0].message.content
 
 
-async def mp3_to_ogg(data):
-    if not FFMPEG_PATH:
-        return None
-
-    def _convert():
-        mp3 = ogg = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-                f.write(data); mp3 = f.name
-            ogg = mp3.replace(".mp3", ".ogg")
-            result = subprocess.run(
-                [FFMPEG_PATH, "-y", "-i", mp3, "-ar", "48000", "-ac", "1",
-                 "-c:a", "libopus", "-b:a", "48k", ogg],
-                capture_output=True, timeout=30
-            )
-            if result.returncode != 0:
-                logger.error(f"ffmpeg xato: {result.stderr.decode(errors='ignore')[-500:]}")
-                return None
-            if not os.path.exists(ogg) or os.path.getsize(ogg) == 0:
-                return None
-            with open(ogg, "rb") as fh:
-                return fh.read()
-        except Exception as e:
-            logger.error(f"mp3_to_ogg: {e}")
-            return None
-        finally:
-            for p in (mp3, ogg):
-                if p and os.path.exists(p):
-                    try: os.unlink(p)
-                    except Exception: pass
-
-    return await asyncio.to_thread(_convert)
-
-
 async def send_voice(update, text, reply_markup=None):
-    if not EL_KEY: return
+    if not (YANDEX_API_KEY and YANDEX_FOLDER_ID):
+        return
     try:
         async with httpx.AsyncClient(timeout=30) as h:
             r = await h.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{EL_VOICE}",
-                headers={"xi-api-key": EL_KEY, "Content-Type": "application/json"},
-                json={"text": text, "model_id": "eleven_multilingual_v2",
-                      "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
+                "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize",
+                headers={"Authorization": f"Api-Key {YANDEX_API_KEY}"},
+                data={
+                    "text": text,
+                    "lang": "ru-RU",
+                    "voice": YANDEX_VOICE,
+                    "folderId": YANDEX_FOLDER_ID,
+                    "format": "oggopus",
+                }
             )
         if r.status_code != 200:
-            logger.error(f"ElevenLabs {r.status_code}: {r.text[:300]}")
+            logger.error(f"Yandex TTS {r.status_code}: {r.text[:300]}")
             return
-        ogg = await mp3_to_ogg(r.content)
-        if ogg:
-            await update.message.reply_voice(voice=ogg, reply_markup=reply_markup)
-        else:
-            await update.message.reply_audio(audio=r.content, filename="reply.mp3", reply_markup=reply_markup)
+        # Yandex javobi to'g'ridan-to'g'ri OggOpus — ffmpeg konvertatsiyasiz Telegram voice sifatida yuboriladi
+        await update.message.reply_voice(voice=r.content, reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"TTS: {e}")
 
