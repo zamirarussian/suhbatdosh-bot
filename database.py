@@ -40,6 +40,10 @@ def init():
     # Har bir user uchun alohida kunlik xabar limiti: NULL = standart (free_limit),
     # 0 = cheksiz, musbat son = shu userga xos limit
     _add_col(c, "users", "daily_limit", "INTEGER")
+    # Premium'ga muddat berish uchun (NULL = doimiy premium, sana bo'lsa o'sha kuni tugaydi)
+    _add_col(c, "users", "premium_until", "TEXT")
+    # Har bir userga alohida imtihon savollar soni: NULL = standart (exam_questions), son = maxsus
+    _add_col(c, "users", "exam_limit", "INTEGER")
 
     c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY, value TEXT
@@ -147,6 +151,16 @@ def check_access(tid):
             update_user(tid, status="expired"); return "expired"
     elif u["status"] == "expired":
         return "expired"
+    elif u["status"] == "premium":
+        pu = u["premium_until"] if "premium_until" in u.keys() else None
+        if pu:
+            try:
+                end = datetime.strptime(pu, "%Y-%m-%d").date()
+                if date.today() > end:
+                    update_user(tid, status="expired", premium_until=None)
+                    return "expired"
+            except (TypeError, ValueError):
+                pass
     limit = effective_daily_limit(u)
     if limit is not None:
         today = str(date.today())
@@ -154,6 +168,36 @@ def check_access(tid):
         if count >= limit:
             return "limit"
     return "ok"
+
+def grant_access(tid, mode, days=None):
+    """mode: 'premium_permanent' | 'premium_dated' | 'trial' | 'blocked' | 'unblock'
+    days: 'premium_dated' uchun necha kunga (3/30/60...), 'trial' uchun sinov kunlari soni"""
+    today = date.today()
+    if mode == "premium_permanent":
+        update_user(tid, status="premium", premium_until=None)
+    elif mode == "premium_dated":
+        until = str(today + timedelta(days=int(days or 3)))
+        update_user(tid, status="premium", premium_until=until)
+    elif mode == "trial":
+        update_user(tid, status="trial", trial_start=str(today), trial_days=int(days or 3))
+    elif mode == "blocked":
+        update_user(tid, status="blocked")
+    elif mode == "unblock":
+        update_user(tid, status="trial", trial_start=str(today), trial_days=3)
+
+def effective_exam_limit(u):
+    """None emas — har doim son qaytaradi. u['exam_limit'] bo'lsa o'sha, aks holda global sozlama."""
+    el = u["exam_limit"] if "exam_limit" in u.keys() else None
+    if el:
+        return el
+    try:
+        return max(1, int(gs("exam_questions") or 5))
+    except (TypeError, ValueError):
+        return 5
+
+def set_exam_limit(tid, value):
+    """value: None -> standart, musbat son -> shu userga xos imtihon savollari soni"""
+    update_user(tid, exam_limit=value)
 
 def set_daily_limit(tid, value):
     """value: None -> standart qiymatga qaytarish, 0 -> cheksiz, musbat son -> shu userga xos limit"""
