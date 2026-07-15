@@ -25,7 +25,12 @@ YANDEX_FOLDER_ID = os.environ.get("YANDEX_FOLDER_ID", "")
 YANDEX_VOICE     = os.environ.get("YANDEX_VOICE", "jane")
 YANDEX_ROLE      = os.environ.get("YANDEX_ROLE", "good")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")
-def get_exam_questions_count():
+def get_exam_questions_count(tid=None):
+    if tid is not None:
+        u = get_user(tid)
+        if u:
+            from database import effective_exam_limit
+            return effective_exam_limit(u)
     try:
         return max(1, int(gs("exam_questions") or 5))
     except (TypeError, ValueError):
@@ -181,7 +186,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_mode(tid, "exam", level=level, week=week)
         lesson_system[tid] = build_exam_prompt(lessons, level)
         await update.message.reply_text(
-            f"📝 {week}-hafta og'zaki imtihoni boshlandi! {get_exam_questions_count()} ta savol beraman. Tayyor bo'lsangiz javob yozing yoki ovoz yuboring."
+            f"📝 {week}-hafta og'zaki imtihoni boshlandi! {get_exam_questions_count(tid)} ta savol beraman. Tayyor bo'lsangiz javob yozing yoki ovoz yuboring."
         )
         try:
             reply = groq_chat(tid, "Начинаем.", lesson_system[tid])
@@ -226,7 +231,7 @@ async def _process_turn(update, tid, text):
 
     if mode == "exam":
         step = inc_exam_step(tid)
-        if step >= get_exam_questions_count():
+        if step >= get_exam_questions_count(tid):
             finished_exam = True
             sys_prompt = (sys_prompt or "") + (
                 "\n\nBu foydalanuvchining oxirgi javobi edi. Endi yangi savol berma — "
