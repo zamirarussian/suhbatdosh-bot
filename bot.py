@@ -25,6 +25,14 @@ YANDEX_FOLDER_ID = os.environ.get("YANDEX_FOLDER_ID", "")
 YANDEX_VOICE     = os.environ.get("YANDEX_VOICE", "jane")
 YANDEX_ROLE      = os.environ.get("YANDEX_ROLE", "good")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")
+
+# Asosiy model band/xato bersa (masalan kunlik limit tugasa), avtomatik shu zaxira modelga o'tadi.
+PRIMARY_MODEL  = os.environ.get("GROQ_PRIMARY_MODEL", "llama-3.3-70b-versatile")
+FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
+
+GENERIC_ERROR_TEXT = "Hozircha band bo'lib turibman 😔 Bir necha soniyadan keyin qayta urinib ko'ring."
+
+
 def get_exam_questions_count(tid=None):
     if tid is not None:
         u = get_user(tid)
@@ -35,6 +43,7 @@ def get_exam_questions_count(tid=None):
         return max(1, int(gs("exam_questions") or 5))
     except (TypeError, ValueError):
         return 5
+
 
 groq = Groq(api_key=GROQ_KEY)
 
@@ -54,41 +63,48 @@ if YANDEX_API_KEY and YANDEX_FOLDER_ID:
 else:
     logger.error("[YANDEX TTS YO'Q] YANDEX_API_KEY / YANDEX_FOLDER_ID o'rnatilmagan")
 
+logger.info(f"[GROQ] Asosiy model: {PRIMARY_MODEL}, zaxira model: {FALLBACK_MODEL}")
+
+
+def _groq_complete(messages, max_tokens):
+    """Groq'ga so'rov yuboradi: avval asosiy (70b) model bilan, agar u band/xato bo'lsa
+    (masalan kunlik token limiti tugasa) avtomatik zaxira (8b-instant) modelga o'tadi.
+    Ikkalasi ham ishlamasa — xatoni tepaga uzatadi (chaqiruvchi funksiya tutadi)."""
+    last_err = None
+    for model in (PRIMARY_MODEL, FALLBACK_MODEL):
+        try:
+            resp = groq.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
+            if model != PRIMARY_MODEL:
+                logger.warning(f"[GROQ FALLBACK] {PRIMARY_MODEL} ishlamadi, {model} bilan javob berildi")
+            return resp.choices[0].message.content
+        except Exception as e:
+            last_err = e
+            logger.error(f"Groq ({model}) xato: {e}")
+            continue
+    raise last_err
+
 
 def groq_chat(tid, text, system_override=None):
     hist = get_history(tid)
     add_history(tid, "user", text)
     sys_msg = {"role": "system", "content": system_override or FREE_SYSTEM}
-    resp = groq.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[sys_msg] + hist + [{"role": "user", "content": text}],
-        max_tokens=250
-    )
-    reply = resp.choices[0].message.content
+    reply = _groq_complete([sys_msg] + hist + [{"role": "user", "content": text}], max_tokens=250)
     add_history(tid, "assistant", reply)
     return reply
 
 
 def groq_correct(text):
-    resp = groq.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role":"system","content":"Ты — учитель русского. Найди ошибки: ❌ [ошибка] → ✅ [правильно] — [объяснение]. Если ошибок нет: ✅ Всё правильно!"},
-            {"role":"user","content":f"Проверь: {text}"}
-        ], max_tokens=300
-    )
-    return resp.choices[0].message.content
+    return _groq_complete([
+        {"role": "system", "content": "Ты — учитель русского. Найди ошибки: ❌ [ошибка] → ✅ [правильно] — [объяснение]. Если ошибок нет: ✅ Всё правильно!"},
+        {"role": "user", "content": f"Проверь: {text}"}
+    ], max_tokens=300)
 
 
 def groq_score(text):
-    resp = groq.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role":"system","content":"Оцени речь: 🎯 Оценка: X/10\n✅ Хорошо: ...\n📈 Улучшить: ..."},
-            {"role":"user","content":f"Оцени: {text}"}
-        ], max_tokens=200
-    )
-    return resp.choices[0].message.content
+    return _groq_complete([
+        {"role": "system", "content": "Оцени речь: 🎯 Оценка: X/10\n✅ Хорошо: ...\n📈 Улучшить: ..."},
+        {"role": "user", "content": f"Оцени: {text}"}
+    ], max_tokens=200)
 
 
 async def send_voice(update, text, reply_markup=None):
@@ -194,6 +210,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(reply)
         except Exception as e:
             logger.error(f"exam start groq: {e}")
+            await update.message.reply_text(GENERIC_ERROR_TEXT)
         return
 
     await send_welcome(update)
@@ -215,7 +232,12 @@ async def end_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     msgs = " ".join(m["content"] for m in hist if m["role"]=="user")
     await update.message.reply_text("📊 Tahlil qilyapman...")
-    score = groq_score(msgs)
+    try:
+        score = groq_score(msgs)
+    except Exception as e:
+        logger.error(f"end_cmd score: {e}")
+        await update.message.reply_text(GENERIC_ERROR_TEXT)
+        return
     clear_history(tid)
     clear_mode(tid)
     lesson_system.pop(tid, None)
@@ -242,8 +264,8 @@ async def _process_turn(update, tid, text):
     try:
         reply = groq_chat(tid, text, sys_prompt)
     except Exception as e:
-        logger.error(f"Groq: {e}")
-        await update.message.reply_text("Xatolik. Qayta urinib ko'ring.")
+        logger.error(f"Groq (_process_turn): {e}")
+        await update.message.reply_text(GENERIC_ERROR_TEXT)
         return
 
     bot_replies[tid] = reply
@@ -288,7 +310,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = tr.text
     except Exception as e:
         logger.error(f"Whisper: {e}")
-        await update.message.reply_text("Ovozni tanib bo'lmadi.")
+        await update.message.reply_text("Ovozni tanib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
         return
     last_texts[tid] = text
     await update.message.reply_text(f"🎤 {text}")
@@ -310,12 +332,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t = last_texts.get(uid)
         if not t: return
         await q.message.reply_text("🔍 Tekshiryapman...")
-        await q.message.reply_text(groq_correct(t))
+        try:
+            await q.message.reply_text(groq_correct(t))
+        except Exception as e:
+            logger.error(f"groq_correct callback: {e}")
+            await q.message.reply_text(GENERIC_ERROR_TEXT)
     elif d.startswith("score:"):
         t = last_texts.get(uid)
         if not t: return
         await q.message.reply_text("🎯 Baholayman...")
-        await q.message.reply_text(groq_score(t))
+        try:
+            await q.message.reply_text(groq_score(t))
+        except Exception as e:
+            logger.error(f"groq_score callback: {e}")
+            await q.message.reply_text(GENERIC_ERROR_TEXT)
     elif d.startswith("godaily:"):
         if lesson_system.get(uid) is None:
             await q.message.reply_text("Sessiya eskirgan, iltimos ilovadan qayta kiring.")
