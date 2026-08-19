@@ -26,9 +26,10 @@ YANDEX_VOICE     = os.environ.get("YANDEX_VOICE", "jane")
 YANDEX_ROLE      = os.environ.get("YANDEX_ROLE", "good")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")
 
-# Asosiy model band/xato bersa (masalan kunlik limit tugasa), avtomatik shu zaxira modelga o'tadi.
-PRIMARY_MODEL  = os.environ.get("GROQ_PRIMARY_MODEL", "llama-3.3-70b-versatile")
-FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
+# DIQQAT: llama-3.3-70b-versatile va llama-3.1-8b-instant Groq tomonidan
+# 2026-08-16 da butunlay o'chirildi (rasmiy eskirish). Yangi modellar:
+PRIMARY_MODEL  = os.environ.get("GROQ_PRIMARY_MODEL", "openai/gpt-oss-120b")
+FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
 
 GENERIC_ERROR_TEXT = "Hozircha band bo'lib turibman 😔 Bir necha soniyadan keyin qayta urinib ko'ring."
 
