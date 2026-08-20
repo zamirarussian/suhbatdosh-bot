@@ -68,16 +68,24 @@ logger.info(f"[GROQ] Asosiy model: {PRIMARY_MODEL}, zaxira model: {FALLBACK_MODE
 
 
 def _groq_complete(messages, max_tokens):
-    """Groq'ga so'rov yuboradi: avval asosiy (70b) model bilan, agar u band/xato bo'lsa
-    (masalan kunlik token limiti tugasa) avtomatik zaxira (8b-instant) modelga o'tadi.
-    Ikkalasi ham ishlamasa — xatoni tepaga uzatadi (chaqiruvchi funksiya tutadi)."""
+    """Groq'ga so'rov yuboradi: avval asosiy model bilan, agar u band/xato/bo'sh javob
+    bersa (gpt-oss modellari 'reasoning' modeli — token yetmasa bo'sh qaytishi mumkin)
+    avtomatik zaxira modelga o'tadi. Ikkalasi ham ishlamasa — xatoni tepaga uzatadi."""
     last_err = None
     for model in (PRIMARY_MODEL, FALLBACK_MODEL):
         try:
-            resp = groq.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
+            resp = groq.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                reasoning_effort="low",  # gpt-oss modellari uchun: kam fikrlash, ko'proq joy javobga
+            )
+            content = (resp.choices[0].message.content or "").strip()
+            if not content:
+                raise ValueError("Groq bo'sh javob qaytardi (reasoning token yetishmagan bo'lishi mumkin)")
             if model != PRIMARY_MODEL:
                 logger.warning(f"[GROQ FALLBACK] {PRIMARY_MODEL} ishlamadi, {model} bilan javob berildi")
-            return resp.choices[0].message.content
+            return content
         except Exception as e:
             last_err = e
             logger.error(f"Groq ({model}) xato: {e}")
@@ -89,7 +97,7 @@ def groq_chat(tid, text, system_override=None):
     hist = get_history(tid)
     add_history(tid, "user", text)
     sys_msg = {"role": "system", "content": system_override or FREE_SYSTEM}
-    reply = _groq_complete([sys_msg] + hist + [{"role": "user", "content": text}], max_tokens=250)
+    reply = _groq_complete([sys_msg] + hist + [{"role": "user", "content": text}], max_tokens=600)
     add_history(tid, "assistant", reply)
     return reply
 
@@ -98,14 +106,14 @@ def groq_correct(text):
     return _groq_complete([
         {"role": "system", "content": "Ты — учитель русского. Найди ошибки: ❌ [ошибка] → ✅ [правильно] — [объяснение]. Если ошибок нет: ✅ Всё правильно!"},
         {"role": "user", "content": f"Проверь: {text}"}
-    ], max_tokens=300)
+    ], max_tokens=600)
 
 
 def groq_score(text):
     return _groq_complete([
         {"role": "system", "content": "Оцени речь: 🎯 Оценка: X/10\n✅ Хорошо: ...\n📈 Улучшить: ..."},
         {"role": "user", "content": f"Оцени: {text}"}
-    ], max_tokens=200)
+    ], max_tokens=500)
 
 
 async def send_voice(update, text, reply_markup=None):
