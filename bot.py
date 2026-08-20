@@ -32,6 +32,7 @@ PRIMARY_MODEL  = os.environ.get("GROQ_PRIMARY_MODEL", "openai/gpt-oss-120b")
 FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
 
 GENERIC_ERROR_TEXT = "Hozircha band bo'lib turibman 😔 Bir necha soniyadan keyin qayta urinib ko'ring."
+TTS_ERROR_NOTE = "\n\n_(hozircha ovoz bilan javob bera olmayapman, texnik ish ketyapti 🔧)_"
 
 
 def get_exam_questions_count(tid=None):
@@ -67,10 +68,24 @@ else:
 logger.info(f"[GROQ] Asosiy model: {PRIMARY_MODEL}, zaxira model: {FALLBACK_MODEL}")
 
 
+def _tag_groq_error(model, e):
+    """Xato matniga qarab sababni ANIQLAB loglaydi (foydalanuvchiga hech qachon ko'rsatilmaydi,
+    faqat admin loglarda ko'radi — 'pul/limit tugadi' bilan 'boshqa texnik xato'ni farqlash uchun)."""
+    msg = str(e).lower()
+    if any(k in msg for k in ("insufficient", "billing", "payment", "quota", "credit")):
+        logger.error(f"[GROQ TO'LOV/BALANS MUAMMOSI] ({model}): {e}")
+    elif any(k in msg for k in ("rate_limit", "429", "rate limit")):
+        logger.error(f"[GROQ LIMIT TUGADI] ({model}): {e}")
+    else:
+        logger.error(f"[GROQ BOSHQA XATO] ({model}): {e}")
+
+
 def _groq_complete(messages, max_tokens):
     """Groq'ga so'rov yuboradi: avval asosiy model bilan, agar u band/xato/bo'sh javob
     bersa (gpt-oss modellari 'reasoning' modeli — token yetmasa bo'sh qaytishi mumkin)
-    avtomatik zaxira modelga o'tadi. Ikkalasi ham ishlamasa — xatoni tepaga uzatadi."""
+    avtomatik zaxira modelga o'tadi. Ikkalasi ham ishlamasa — xatoni tepaga uzatadi.
+    Foydalanuvchi hech qachon xato sababini (pul/limit) ko'rmaydi — faqat umumiy
+    xushmuomala xabar oladi (GENERIC_ERROR_TEXT); sabab faqat loglarda ko'rinadi."""
     last_err = None
     for model in (PRIMARY_MODEL, FALLBACK_MODEL):
         try:
@@ -88,7 +103,7 @@ def _groq_complete(messages, max_tokens):
             return content
         except Exception as e:
             last_err = e
-            logger.error(f"Groq ({model}) xato: {e}")
+            _tag_groq_error(model, e)
             continue
     raise last_err
 
@@ -117,8 +132,13 @@ def groq_score(text):
 
 
 async def send_voice(update, text, reply_markup=None):
+    """Ovozli xabar yuboradi. Muvaffaqiyatli bo'lsa True, bo'lmasa False qaytaradi
+    (chaqiruvchi False bo'lsa matnni ko'rinadigan holda yuborishi kerak, foydalanuvchi
+    "jim qolib" ketmasin). Sabab logda aniq belgilanadi — Yandex balans/pul muammosimi,
+    yoki boshqa texnik xatomi — shu orqali darhol bilinadi."""
     if not (YANDEX_API_KEY and YANDEX_FOLDER_ID):
-        return
+        logger.error("[YANDEX SOZLANMAGAN] YANDEX_API_KEY yoki YANDEX_FOLDER_ID yo'q")
+        return False
     try:
         payload = {
             "text": text,
@@ -137,12 +157,18 @@ async def send_voice(update, text, reply_markup=None):
                 data=payload
             )
         if r.status_code != 200:
-            logger.error(f"Yandex TTS {r.status_code}: {r.text[:300]}")
-            return
+            body_lower = (r.text or "").lower()
+            if r.status_code in (402, 403) or "insufficient" in body_lower or "payment" in body_lower or "balance" in body_lower:
+                logger.error(f"[YANDEX BALANS TUGAGAN] {r.status_code}: {r.text[:300]}")
+            else:
+                logger.error(f"[YANDEX TTS XATO] {r.status_code}: {r.text[:300]}")
+            return False
         # Yandex javobi to'g'ridan-to'g'ri OggOpus — ffmpeg konvertatsiyasiz Telegram voice sifatida yuboriladi
         await update.message.reply_voice(voice=r.content, reply_markup=reply_markup)
+        return True
     except Exception as e:
-        logger.error(f"TTS: {e}")
+        logger.error(f"[YANDEX TTS XATO] tarmoq/boshqa: {e}")
+        return False
 
 
 async def send_welcome(update):
@@ -291,7 +317,11 @@ async def _process_turn(update, tid, text):
         InlineKeyboardButton("📝 Matnni ko'rish", callback_data=f"txt:{tid}"),
         InlineKeyboardButton("✅ Xatolar", callback_data=f"err:{tid}")
     ]])
-    await send_voice(update, reply, reply_markup=kb)
+    ok = await send_voice(update, reply, reply_markup=kb)
+    if not ok:
+        # Ovoz yuborilmadi (Yandex bilan muammo) — foydalanuvchi "jim qolib" ketmasin,
+        # javobni to'g'ridan-to'g'ri ko'rinadigan matn qilib yuboramiz.
+        await update.message.reply_text(reply + TTS_ERROR_NOTE, reply_markup=kb, parse_mode="Markdown")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
