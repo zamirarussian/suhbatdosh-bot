@@ -93,7 +93,6 @@ def _groq_complete(messages, max_tokens):
                 model=model,
                 messages=messages,
                 max_tokens=max_tokens,
-                reasoning_effort="low",  # gpt-oss modellari uchun: kam fikrlash, ko'proq joy javobga
             )
             content = (resp.choices[0].message.content or "").strip()
             if not content:
@@ -112,7 +111,7 @@ def groq_chat(tid, text, system_override=None):
     hist = get_history(tid)
     add_history(tid, "user", text)
     sys_msg = {"role": "system", "content": system_override or FREE_SYSTEM}
-    reply = _groq_complete([sys_msg] + hist + [{"role": "user", "content": text}], max_tokens=600)
+    reply = _groq_complete([sys_msg] + hist + [{"role": "user", "content": text}], max_tokens=900)
     add_history(tid, "assistant", reply)
     return reply
 
@@ -121,14 +120,14 @@ def groq_correct(text):
     return _groq_complete([
         {"role": "system", "content": "Ты — учитель русского. Найди ошибки: ❌ [ошибка] → ✅ [правильно] — [объяснение]. Если ошибок нет: ✅ Всё правильно!"},
         {"role": "user", "content": f"Проверь: {text}"}
-    ], max_tokens=600)
+    ], max_tokens=900)
 
 
 def groq_score(text):
     return _groq_complete([
         {"role": "system", "content": "Оцени речь: 🎯 Оценка: X/10\n✅ Хорошо: ...\n📈 Улучшить: ..."},
         {"role": "user", "content": f"Оцени: {text}"}
-    ], max_tokens=500)
+    ], max_tokens=800)
 
 
 async def send_voice(update, text, reply_markup=None):
