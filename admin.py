@@ -6,6 +6,7 @@ from flask import Flask, request, redirect, session, render_template_string, jso
 from database import (
     db, gs, ss, get_users_for_broadcast, get_user, set_daily_limit,
     effective_daily_limit, grant_access, set_exam_limit, effective_exam_limit,
+    delete_user,
 )
 
 app = Flask(__name__)
@@ -61,6 +62,9 @@ input,select,textarea{width:100%;padding:8px 10px;border:1px solid #e0e4ef;borde
 .opt-row input{width:auto;accent-color:#1f54e0}
 .modal-f{display:flex;gap:8px;padding:14px 20px;border-top:1px solid #e8ecf6}
 .dlbl{font-size:11px;color:#7a8398;margin-top:2px}
+.danger-zone{padding:0 20px 16px}
+.btn-danger{width:100%;background:#fde8ea;color:#c42b3a;font-weight:600}
+.btn-danger:hover{background:#fbd4d8}
 </style></head><body><div class="lay">
 <div class="sb"><div class="lg">🤖 Zamira Admin</div>
 <a href="/admin" class="n {%dash%}"><i class="ti ti-chart-bar"></i> Dashboard</a>
@@ -241,6 +245,10 @@ def users():
           <button type="button" class="btn bp" style="flex:1" onclick="saveAcc()">💾 Saqlash</button>
           <button type="button" class="btn bo" onclick="closeAcc()">Yopish</button>
         </div>
+        <div class="danger-zone">
+          <div class="modal-sub" style="color:#c42b3a">Xavfli hudud</div>
+          <button type="button" class="btn bs btn-danger" onclick="delUser()">🗑 Foydalanuvchini butunlay o'chirish</button>
+        </div>
       </div>
     </div>
 
@@ -261,6 +269,13 @@ def users():
       var m=document.querySelector('input[name=accmode]:checked');
       var body={{tid:ACC_TID, mode: m?m.value:'', limit_val:document.getElementById('acc-dl').value, exam_val:document.getElementById('acc-el').value}};
       var r=await fetch('/admin/users/update',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(body)}});
+      if(r.ok){{location.reload();}}else{{alert('Xato yuz berdi');}}
+    }}
+    async function delUser(){{
+      var nm=document.getElementById('acc-nm').textContent;
+      if(!confirm('Rostdan ham "'+nm+'" (ID '+ACC_TID+') butunlay o\\'chirilsinmi?\\n\\nBarcha suhbat tarixi, streak, dostup va sozlamalar QAYTARIB BO\\'LMAS holda o\\'chib ketadi!'))return;
+      if(!confirm('Ishonchingiz komilmi? Bu amalni ORQAGA QAYTARIB BO\\'LMAYDI.'))return;
+      var r=await fetch('/admin/users/delete',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{tid:ACC_TID}})}});
       if(r.ok){{location.reload();}}else{{alert('Xato yuz berdi');}}
     }}
     </script>
@@ -340,6 +355,21 @@ def users_update():
             except ValueError:
                 pass
 
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/users/delete", methods=["POST"])
+@lr
+def users_delete():
+    """Userni bazadan BUTUNLAY o'chiradi (suhbat tarixi bilan birga). Qaytarib bo'lmaydi."""
+    d = request.get_json(force=True, silent=True) or {}
+    try:
+        tid = int(d.get("tid", 0))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "tid"}), 400
+    if not tid:
+        return jsonify({"ok": False, "error": "tid"}), 400
+    delete_user(tid)
     return jsonify({"ok": True})
 
 
