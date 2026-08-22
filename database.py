@@ -130,6 +130,15 @@ def update_user(tid, **kw):
     f = ",".join(f"{k}=?" for k in kw)
     c = db(); c.execute(f"UPDATE users SET {f} WHERE telegram_id=?", list(kw.values())+[tid]); c.commit(); c.close()
 
+def delete_user(tid):
+    """Userni va uning BUTUN izini (suhbat tarixi) bazadan qaytarib bo'lmas holda o'chiradi.
+    Sozlamalar (settings), streak_msgs, topics kabi umumiy jadvallarga tegmaydi —
+    faqat shu userga tegishli qatorlar o'chadi."""
+    c = db()
+    c.execute("DELETE FROM users WHERE telegram_id=?", (tid,))
+    c.execute("DELETE FROM history WHERE telegram_id=?", (tid,))
+    c.commit(); c.close()
+
 def effective_daily_limit(u):
     """None = cheksiz, son = shu userga qo'llanadigan kunlik xabar limiti.
     u['daily_limit']: NULL -> standart qiymat ishlatiladi (status'ga qarab),
