@@ -16,7 +16,8 @@ def get_lesson(level, day):
         r = requests.get(
             f"{ILOVA_URL}/api/lesson-brief",
             params={"level": level, "day": day, "secret": BOT_API_SECRET},
-            timeout=15,
+            timeout=45,  # 15 dan 45 ga oshirildi — katta/sekin PDF'li kunlarda "timeout" tufayli
+                         # noto'g'ri "dars tayyor emas" chiqishining oldini oladi
         )
         d = r.json()
         return d if d.get("ok") else None
