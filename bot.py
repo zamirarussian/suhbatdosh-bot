@@ -274,6 +274,27 @@ async def send_welcome(update):
         await update.message.reply_text(text)
 
 
+PREMIUM_LINK = "https://t.me/m/06u2bDsNM2Ri"
+
+
+def premium_keyboard():
+    """Premium taklif sahifasini (mini ilova) ochadigan tugma."""
+    if not MINIAPP_URL:
+        return None
+    base = MINIAPP_URL.split("#")[0]
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Premiumga o'tish", web_app=WebAppInfo(url=base + "#premium"))]])
+
+
+async def send_premium_offer(message):
+    """Premium haqida xabar. Matn va havola admin 'settings' dan: premium_offer_text, premium_link."""
+    text = gs("premium_offer_text") or ("⭐ *Premium*\n\nCheksiz suhbat, ovozli javoblar va barcha mavzular.\n\n"
+            "💳 *Narxlar:*\n• 1 oy — 99 000 so'm\n• 3 oy — 179 000 so'm (300 000 o'rniga, 121 000 so'm tejaysiz)\n\n"
+            "Premium olish uchun menejerimizga yozing 👇")
+    link = gs("premium_link") or PREMIUM_LINK
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Menejerga yozish", url=link)]]) if link else None
+    await message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
+
+
 async def check(update, tid):
     a = check_access(tid)
     if a == "new":
@@ -283,13 +304,15 @@ async def check(update, tid):
         await update.message.reply_text("Sizning kirishingiz cheklangan.")
         return False
     if a == "expired":
-        await update.message.reply_text(gs("trial_expired_text") or "Sinov muddati tugadi.")
+        await update.message.reply_text(gs("trial_expired_text") or "Sinov muddati tugadi.", reply_markup=premium_keyboard())
         return False
     if a == "limit":
         from database import effective_daily_limit
         u = get_user(tid)
         lim = effective_daily_limit(u) if u else (gs("free_limit") or 3)
-        await update.message.reply_text(f"⏰ Bugungi {lim} ta xabaringiz tugadi. Ertaga davom eting!")
+        await update.message.reply_text(
+            f"⏰ Bugungi {lim} ta bepul xabaringiz tugadi.\n\nCheksiz gaplashish uchun Premiumga o'ting yoki ertaga davom eting 👇",
+            reply_markup=premium_keyboard())
         return False
     return True
 
@@ -449,6 +472,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     payload = context.args[0] if context.args else ""
     parts = payload.split("_")
+
+    if payload == "premium":
+        await send_premium_offer(update.message)
+        return
 
     if len(parts) == 2 and parts[0] == "t":
         try:
