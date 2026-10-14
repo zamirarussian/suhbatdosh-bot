@@ -1,4 +1,6 @@
 import os
+import time
+import asyncio
 import logging
 import httpx
 from groq import Groq
@@ -25,6 +27,7 @@ YANDEX_FOLDER_ID = os.environ.get("YANDEX_FOLDER_ID", "")
 YANDEX_VOICE     = os.environ.get("YANDEX_VOICE", "jane")
 YANDEX_ROLE      = os.environ.get("YANDEX_ROLE", "good")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")
+EDGE_VOICE = os.environ.get("EDGE_VOICE", "ru-RU-SvetlanaNeural")
 
 # DIQQAT: llama-3.3-70b-versatile va llama-3.1-8b-instant Groq tomonidan
 # 2026-08-16 da butunlay o'chirildi (rasmiy eskirish). Yangi modellar:
@@ -157,14 +160,17 @@ def groq_score(text):
     ], max_tokens=800)
 
 
-async def send_voice(update, text, reply_markup=None):
-    """Ovozli xabar yuboradi. Muvaffaqiyatli bo'lsa True, bo'lmasa False qaytaradi
-    (chaqiruvchi False bo'lsa matnni ko'rinadigan holda yuborishi kerak, foydalanuvchi
-    "jim qolib" ketmasin). Sabab logda aniq belgilanadi — Yandex balans/pul muammosimi,
-    yoki boshqa texnik xatomi — shu orqali darhol bilinadi."""
+_yandex_down_until = 0.0   # Yandex ishlamasa, shu vaqtgacha uni o'tkazib yuboramiz (kutib qolmaslik uchun)
+
+
+async def _tts_yandex(text):
+    """Yandex SpeechKit -> OggOpus baytlari. Xatoda None (sabab logda aniq belgilanadi)."""
+    global _yandex_down_until
     if not (YANDEX_API_KEY and YANDEX_FOLDER_ID):
         logger.error("[YANDEX SOZLANMAGAN] YANDEX_API_KEY yoki YANDEX_FOLDER_ID yo'q")
-        return False
+        return None
+    if time.time() < _yandex_down_until:
+        return None
     try:
         payload = {
             "text": text,
@@ -176,7 +182,7 @@ async def send_voice(update, text, reply_markup=None):
         # "emotion" faqat jane/omazh ovozlari uchun rasmiy qo'llab-quvvatlanadi
         if YANDEX_VOICE in ("jane", "omazh") and YANDEX_ROLE:
             payload["emotion"] = YANDEX_ROLE
-        async with httpx.AsyncClient(timeout=30) as h:
+        async with httpx.AsyncClient(timeout=10) as h:
             r = await h.post(
                 "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize",
                 headers={"Authorization": f"Api-Key {YANDEX_API_KEY}"},
@@ -188,12 +194,59 @@ async def send_voice(update, text, reply_markup=None):
                 logger.error(f"[YANDEX BALANS TUGAGAN] {r.status_code}: {r.text[:300]}")
             else:
                 logger.error(f"[YANDEX TTS XATO] {r.status_code}: {r.text[:300]}")
-            return False
-        # Yandex javobi to'g'ridan-to'g'ri OggOpus — ffmpeg konvertatsiyasiz Telegram voice sifatida yuboriladi
-        await update.message.reply_voice(voice=r.content, reply_markup=reply_markup)
-        return True
+            _yandex_down_until = time.time() + 300
+            return None
+        _yandex_down_until = 0.0
+        return r.content
     except Exception as e:
         logger.error(f"[YANDEX TTS XATO] tarmoq/boshqa: {e}")
+        _yandex_down_until = time.time() + 300   # 5 daqiqa Yandex'ni o'tkazib yuboramiz
+        return None
+
+
+async def _tts_edge(text):
+    """edge-tts (bepul, zaxira) -> MP3 -> ffmpeg orqali OggOpus. Xatoda None."""
+    try:
+        import edge_tts
+        async def _synth():
+            mp3 = bytearray()
+            async for ch in edge_tts.Communicate(text, EDGE_VOICE).stream():
+                if ch["type"] == "audio":
+                    mp3.extend(ch["data"])
+            return bytes(mp3)
+        mp3 = await asyncio.wait_for(_synth(), timeout=25)
+        if not mp3:
+            raise ValueError("edge-tts bo'sh audio qaytardi")
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-loglevel", "error", "-i", "pipe:0",
+            "-c:a", "libopus", "-b:a", "32k", "-f", "ogg", "pipe:1",
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await asyncio.wait_for(proc.communicate(mp3), timeout=20)
+        if proc.returncode != 0 or not out:
+            raise RuntimeError(f"ffmpeg xato: {err[:200]!r}")
+        return out
+    except Exception as e:
+        logger.error(f"[EDGE-TTS XATO] {e}")
+        return None
+
+
+async def send_voice(update, text, reply_markup=None):
+    """Ovozli xabar yuboradi: avval Yandex, ishlamasa edge-tts (zaxira). Muvaffaqiyatli bo'lsa True,
+    ikkalasi ham ishlamasa False (chaqiruvchi matnni ko'rinadigan holda yuboradi, foydalanuvchi
+    "jim qolib" ketmasin). Sabab logda aniq belgilanadi."""
+    audio = await _tts_yandex(text)
+    if audio is None:
+        audio = await _tts_edge(text)
+        if audio is not None:
+            logger.warning("[TTS ZAXIRA] Yandex ishlamadi, edge-tts bilan ovoz yuborildi")
+    if audio is None:
+        return False
+    try:
+        await update.message.reply_voice(voice=audio, reply_markup=reply_markup)
+        return True
+    except Exception as e:
+        logger.error(f"[TELEGRAM VOICE XATO] {e}")
         return False
 
 
