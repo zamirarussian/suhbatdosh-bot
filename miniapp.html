@@ -22,6 +22,11 @@ h1{font-size:28px;font-weight:800;margin:6px 0 0;line-height:1.15}
 .sub{font-size:14px;color:var(--muted);font-weight:500}
 .top{display:flex;justify-content:space-between;align-items:center}
 .chip{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px;color:#b45f06;box-shadow:0 4px 12px rgba(20,45,100,.06)}
+.promo{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:20px;background:linear-gradient(150deg,#f7c948,#e8890c);color:#3d2400;box-shadow:0 4px 12px rgba(232,137,12,.25)}
+.promo .pt{font-size:16px;font-weight:800;line-height:1.25}
+.promo .ps{font-size:13px;font-weight:600;opacity:.85;margin-top:2px}
+.promo s{opacity:.7}
+.promo .go{margin-left:auto;background:#fff;color:#b45f06;font-weight:800;font-size:13px;padding:8px 12px;border-radius:999px;flex:none}
 .card{background:#fff;border:1px solid var(--border);border-radius:24px;box-shadow:0 4px 12px rgba(20,45,100,.06)}
 .big{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;min-height:168px;padding:24px;border-radius:24px;box-shadow:0 4px 12px rgba(20,45,100,.06)}
 .big.blue{background:linear-gradient(135deg,#2f63ee,#15347e);color:#fff}
@@ -57,6 +62,19 @@ svg{display:block}
 .nav button.on{background:var(--blue-soft);color:var(--primary)}
 .tab{all:unset;cursor:pointer;flex:1;text-align:center;min-height:44px;line-height:44px;border-radius:14px;background:#fff;border:1px solid var(--border);font-weight:800;font-size:15px;color:var(--primary)}
 .tab.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.gold{background:linear-gradient(150deg,#f7c948,#e8890c);color:#3b2400}
+.perk{display:flex;align-items:center;gap:14px;padding:16px 18px}
+.perk .ck{width:36px;height:36px;border-radius:12px;background:#e3f6ec;display:flex;align-items:center;justify-content:center;flex:none}
+.perk b{display:block;font-size:17px;font-weight:800}
+.perk span{font-size:14px;color:var(--muted);font-weight:500}
+.cta{all:unset;box-sizing:border-box;cursor:pointer;text-align:center;width:100%;min-height:56px;line-height:56px;border-radius:18px;background:linear-gradient(135deg,#2f63ee,#15347e);color:#fff;font-size:18px;font-weight:800;box-shadow:0 4px 12px rgba(31,84,224,.35)}
+.plan{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;position:relative}
+.plan .nm{font-size:18px;font-weight:800}
+.plan .pr{text-align:right}
+.plan .pr b{font-size:22px;font-weight:800;color:var(--dark)}
+.plan .old{display:block;font-size:14px;color:#6b7694;text-decoration:line-through;font-weight:600}
+.plan.best{border:2px solid #e8890c}
+.badge{position:absolute;top:-11px;left:18px;background:linear-gradient(150deg,#f7c948,#e8890c);color:#3b2400;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px}
 .empty{padding:24px;text-align:center;color:var(--muted);font-weight:600}
 </style>
 </head>
@@ -72,6 +90,11 @@ svg{display:block}
         <span id="hStreak">0 kun</span>
       </div>
     </div>
+    <button class="promo" id="promo" onclick="openPremium()">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" style="flex:none"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.5 7L12 17.5 5.7 21l1.5-7L2 9.3l7-.8z"/></svg>
+      <div><div class="pt">3 oy suhbatni 179 000 so'mga oling</div><div class="ps"><s>300 000</s> · 121 000 so'm tejaysiz</div></div>
+      <div class="go">Olish</div>
+    </button>
     <div style="font-size:18px;font-weight:700;margin-top:4px">Bugun nima qilamiz?</div>
     <button class="big blue" onclick="show('s-tlevel')">
       <div class="ico glass"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></div>
@@ -132,6 +155,11 @@ svg{display:block}
       <div class="ava" id="pAva">Z</div>
       <div><div class="nm" id="pName">Do'stim</div><div class="sub" id="pSub">Seriya: 0 kun</div></div>
     </div>
+    <button class="row gold" id="premRow" onclick="show('s-premium')" style="border:none;min-height:96px">
+      <div class="ico" style="background:rgba(255,255,255,.45)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b2400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg></div>
+      <div class="tx"><div class="tt" id="premTitle">Premium</div><div class="ss" id="premSub" style="color:#5a3a00">Cheksiz suhbat</div></div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b2400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
     <button class="row hero" onclick="show('s-results')">
       <div class="ico glass"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></div>
       <div class="tx"><div class="tt">Natijalarim</div><div class="ss">Seriya va holatingiz</div></div>
@@ -142,6 +170,22 @@ svg{display:block}
       <div class="tx"><div class="tt">Yordam</div><div class="ss">Savol bo'lsa, shu yerda</div></div>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1f54e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
     </button>
+  </section>
+
+  <!-- PREMIUM -->
+  <section class="screen" id="s-premium">
+    <button class="back" onclick="show('s-profile')">← Orqaga</button>
+    <div class="big gold" style="cursor:default;min-height:170px;background:linear-gradient(150deg,#f7c948,#e8890c);color:#3b2400">
+      <div class="ico" style="background:rgba(255,255,255,.45)"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#3b2400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg></div>
+      <div><div class="t">Premium</div><div class="d" style="color:#5a3a00;opacity:1">Cheklovsiz gaplashing, tezroq o'rganing</div></div>
+    </div>
+    <div class="card perk"><div class="ck"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0e8a73" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></div><div><b>Cheksiz suhbat</b><span>Kunlik xabar limiti yo'q</span></div></div>
+    <div class="card perk"><div class="ck"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0e8a73" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></div><div><b>Ovozli suhbat</b><span>Gapiring, bot ovoz bilan javob beradi</span></div></div>
+    <div class="card perk"><div class="ck"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0e8a73" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></div><div><b>Barcha mavzular</b><span>A1 va B1 darajadagi barcha mavzular</span></div></div>
+    <div class="card plan"><div class="nm">1 oy</div><div class="pr"><b>99 000</b> <span class="sub">so'm</span></div></div>
+    <div class="card plan best"><span class="badge">Foydali · 121 000 so'm tejaysiz</span><div class="nm">3 oy</div><div class="pr"><span class="old">300 000 so'm</span><b>179 000</b> <span class="sub">so'm</span></div></div>
+    <button class="cta" onclick="openPremium()">Premium olish</button>
+    <div class="sub" style="text-align:center">Bosganingizda menejer bilan chat ochiladi</div>
   </section>
 
   <!-- NATIJALAR -->
@@ -186,16 +230,22 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){retu
 
 function show(id){
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.toggle('on', s.id===id); });
-  var inProfile = (id==='s-profile'||id==='s-results'||id==='s-help');
+  var inProfile = (id==='s-profile'||id==='s-results'||id==='s-help'||id==='s-premium');
   document.getElementById('n-home').classList.toggle('on', !inProfile);
   document.getElementById('n-profile').classList.toggle('on', inProfile);
   window.scrollTo(0,0);
 }
 
 var BOT = 'zamira_suhbatdosh_bot';
+var PREMIUM_LINK = 'https://t.me/m/06u2bDsNM2Ri';
+
+function openPremium(){
+  if (tg && tg.openTelegramLink) { tg.openTelegramLink(PREMIUM_LINK); }
+  else { window.location.href = PREMIUM_LINK; }
+}
 
 function send(obj){
-  var payload = obj.a === 'topic' ? ('t_' + obj.id) : ('f_' + (obj.l || 'A1'));
+  var payload = obj.a === 'premium' ? 'premium' : (obj.a === 'topic' ? ('t_' + obj.id) : ('f_' + (obj.l || 'A1')));
   var url = 'https://t.me/' + BOT + '?start=' + payload;
   if (tg && tg.openTelegramLink) { tg.openTelegramLink(url); }
   else { window.location.href = url; }
@@ -214,6 +264,11 @@ function loadProfile(){
     document.getElementById('pName').textContent = name;
     document.getElementById('pAva').textContent = name.charAt(0).toUpperCase();
     document.getElementById('pSub').textContent = 'Seriya: '+streak;
+    if (u.status === 'premium') {
+      document.getElementById('promo').style.display = 'none';
+      document.getElementById('premTitle').textContent = 'Premium faol';
+      document.getElementById('premSub').textContent = 'Cheksiz suhbatdan foydalanyapsiz';
+    }
     document.getElementById('rStreak').textContent = u.streak||0;
     document.getElementById('rStatus').textContent = STATUS[u.status] || u.status || '—';
     document.getElementById('rLast').textContent = u.last_active || '—';
@@ -275,6 +330,7 @@ function loadTopics(){
 }
 
 loadProfile(); loadTopics();
+if (location.hash === '#premium') show('s-premium');
 </script>
 </body>
 </html>
