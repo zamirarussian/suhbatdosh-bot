@@ -450,6 +450,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payload = context.args[0] if context.args else ""
     parts = payload.split("_")
 
+    if len(parts) == 2 and parts[0] == "t":
+        try:
+            await start_topic(update.message, context, tid, int(parts[1]))
+        except ValueError:
+            await send_menu(update.message)
+        return
+
+    if len(parts) == 2 and parts[0] == "f" and parts[1] in ("A1", "B1"):
+        await begin_free(update.message, context, tid, parts[1])
+        return
+
     if len(parts) == 3 and parts[0] == "d":
         level, day = parts[1], int(parts[2])
         lesson = get_lesson(level, day)
