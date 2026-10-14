@@ -68,6 +68,61 @@ def init():
     c.close()
 
 
+RTK_TOPICS = [
+    # (sarlavha, rus tilidagi tavsif)
+    ("A1 · Tanishuv", "Знакомство: имя, страна, профессия, возраст"),
+    ("A1 · Oila", "Семья: члены семьи, состав семьи"),
+    ("A1 · Kasblar va ish kuni", "Профессии и рабочий день"),
+    ("A1 · Kun tartibi", "Распорядок дня: время, действия дня"),
+    ("A1 · Supermarket", "Продукты и покупки в супермаркете"),
+    ("A1 · Kiyim va bozor", "Одежда, рынок и торг"),
+    ("A1 · Kafe va restoran", "Кафе и ресторан: заказ еды, готовка дома"),
+    ("A1 · Ob-havo va fasllar", "Погода и времена года"),
+    ("A1 · Transport va taksi", "Транспорт и такси"),
+    ("A1 · Shahar va yo'l topish", "Город и ориентация на местности"),
+    ("A1 · Uy ijarasi", "Аренда жилья"),
+    ("A1 · Kommunal xizmatlar", "Коммунальные услуги и оплата"),
+    ("A1 · Poliklinika", "Поликлиника: визит к врачу"),
+    ("A1 · Dorixona", "Аптека: покупка лекарств"),
+    ("A1 · Hujjatlar va patent", "Документы, миграционная карта, патент"),
+    ("A1 · Bank va pul o'tkazmalari", "Банк и денежные переводы"),
+    ("A1 · Ta'til va sayohat", "Отпуск, путешествия и планы на будущее"),
+    ("A1 · Telefon va hamkasblar", "Телефонные разговоры, общение с коллегами и начальником"),
+    ("B1 · O'zingiz haqingizda", "Подробный рассказ о себе: характер, интересы, ценности"),
+    ("B1 · Oila va an'analar", "Семья: члены, состав, отношения, ценности и традиции"),
+    ("B1 · Kasb va karyera", "Профессия: карьера, обязанности, профессиональное общение"),
+    ("B1 · Ish kuni", "Рабочий день: плюсы и минусы профессий, рабочие ситуации"),
+    ("B1 · Xaridlar va taqqoslash", "Покупки, сравнение товаров, потребительские привычки"),
+    ("B1 · Shikoyat va qaytarish", "Жалоба, возврат товара, права потребителя"),
+    ("B1 · Kafe va ovqat buyurtma", "Кафе, ресторан, вкусы, оценка сервиса; заказ еды; готовка дома"),
+    ("B1 · Ob-havo va iqlim", "Погода, климат, сезоны"),
+    ("B1 · Shahar hayoti va transport", "Городская жизнь и городские проблемы. Транспорт и такси"),
+    ("B1 · Yo'nalish va shahar haqida fikr", "Описание маршрута, ориентация, мнение о городе"),
+    ("B1 · Ijara va ko'chib o'tish", "Аренда, переезд, обустройство жилья"),
+    ("B1 · Kommunal muammolar", "Проблемы ЖКХ, спор с хозяином, ремонт"),
+    ("B1 · Salomatlik va poliklinika", "Здоровье и образ жизни. Поликлиника: визит к врачу"),
+    ("B1 · Sog'lom odatlar va dorixona", "Здоровые привычки и советы. Аптека: покупка лекарств"),
+    ("B1 · Hujjatlar va migratsiya", "Документы, миграционная карта, патент"),
+    ("B1 · Bank va pul o'tkazmalari", "Банк и денежные переводы"),
+    ("B1 · Ta'til, sayohat, rejalar", "Отпуск, путешествия, планы и мнения (свободная дискуссия)"),
+    ("B1 · Telefon va muzokaralar", "Телефон, общение с коллегами и начальником, переговоры"),
+]
+
+
+def _seed_rtk_topics(c):
+    """Rus Tili Har Kuni mavzularini bir marta qo'shadi (admindan o'chirilsa qayta qo'shilmaydi)."""
+    done = c.execute("SELECT value FROM settings WHERE key='rtk_topics_seeded'").fetchone()
+    if done:
+        return
+    # oldingi xatolik tufayli paydo bo'lgan takroriy mavzularni tozalash
+    c.execute("DELETE FROM topics WHERE id NOT IN (SELECT MIN(id) FROM topics GROUP BY title)")
+    base = 100
+    for i, (t, d) in enumerate(RTK_TOPICS):
+        if not c.execute("SELECT 1 FROM topics WHERE title=?", (t,)).fetchone():
+            c.execute("INSERT INTO topics (title,description,ord) VALUES (?,?,?)", (t, d, base + i))
+    c.execute("INSERT OR REPLACE INTO settings VALUES ('rtk_topics_seeded','1')")
+
+
 def _seed(c):
     defs = {
         "free_limit": "3",
@@ -94,15 +149,18 @@ def _seed(c):
     ]
     for rs, re, m in streaks:
         c.execute("INSERT OR IGNORE INTO streak_msgs (range_start,range_end,message) VALUES (?,?,?)", (rs,re,m))
-    tops = [
-        ("O'zingni tanishtir","Ism, kasb, shahar",1),
-        ("Do'st topish","Yangi tanishuvlar",2),
-        ("Kafeda buyurtma","Ovqat, ichimlik",3),
-        ("Ish haqida","Kasb, ish joyi",4),
-        ("Sayohat","Shaharlar, reyslar",5),
-    ]
-    for t,d,o in tops:
-        c.execute("INSERT OR IGNORE INTO topics (title,description,ord) VALUES (?,?,?)", (t,d,o))
+    # Standart mavzular faqat jadval bo'sh bo'lsa qo'shiladi (har ishga tushganda takrorlanmasin)
+    if c.execute("SELECT COUNT(*) FROM topics").fetchone()[0] == 0:
+        tops = [
+            ("O'zingni tanishtir","Ism, kasb, shahar",1),
+            ("Do'st topish","Yangi tanishuvlar",2),
+            ("Kafeda buyurtma","Ovqat, ichimlik",3),
+            ("Ish haqida","Kasb, ish joyi",4),
+            ("Sayohat","Shaharlar, reyslar",5),
+        ]
+        for t,d,o in tops:
+            c.execute("INSERT INTO topics (title,description,ord) VALUES (?,?,?)", (t,d,o))
+    _seed_rtk_topics(c)
     c.commit()
 
 
@@ -271,81 +329,6 @@ def add_history(tid, role, content):
 
 def clear_history(tid):
     c = db(); c.execute("DELETE FROM history WHERE telegram_id=?", (tid,)); c.commit(); c.close()
-
-
-# ===== OYLIK STATISTIKA (nechta odam gaplashdi, nechta savol-javob, taxminiy vaqt) =====
-def get_available_months():
-    """History'da ma'lumot bor barcha oylar ro'yxati ('YYYY-MM'), yangisidan eskisiga."""
-    c = db()
-    rows = c.execute(
-        "SELECT DISTINCT substr(created_at,1,7) as m FROM history WHERE role='user' ORDER BY m DESC"
-    ).fetchall()
-    c.close()
-    return [r["m"] for r in rows]
-
-def get_monthly_stats(month=None):
-    """Berilgan oy ('YYYY-MM', None bo'lsa — joriy oy) uchun statistika.
-    Qaytaradi: {month, total_users, total_messages, total_est_minutes, users: [...]}
-    'est_minutes' — TAXMINIY faollik vaqti: har kunda foydalanuvchining birinchi va oxirgi
-    xabari orasidagi farq asosida hisoblanadi (aniq sekund darajasida kuzatilmagani uchun
-    100% aniq emas, lekin foydali taxmin beradi)."""
-    if month is None:
-        month = date.today().strftime("%Y-%m")
-    c = db()
-    total_users = c.execute(
-        "SELECT COUNT(DISTINCT telegram_id) as n FROM history WHERE role='user' AND substr(created_at,1,7)=?",
-        (month,)
-    ).fetchone()["n"]
-    total_messages = c.execute(
-        "SELECT COUNT(*) as n FROM history WHERE role='user' AND substr(created_at,1,7)=?",
-        (month,)
-    ).fetchone()["n"]
-
-    rows = c.execute("""
-        SELECT telegram_id, substr(created_at,1,10) as d,
-               MIN(created_at) as t0, MAX(created_at) as t1, COUNT(*) as cnt
-        FROM history
-        WHERE role='user' AND substr(created_at,1,7)=?
-        GROUP BY telegram_id, d
-    """, (month,)).fetchall()
-    c.close()
-
-    per_user = {}
-    for r in rows:
-        tid = r["telegram_id"]
-        st = per_user.setdefault(tid, {"messages": 0, "minutes": 0.0, "days": 0})
-        st["messages"] += r["cnt"]
-        st["days"] += 1
-        try:
-            t0 = datetime.strptime(r["t0"], "%Y-%m-%d %H:%M:%S")
-            t1 = datetime.strptime(r["t1"], "%Y-%m-%d %H:%M:%S")
-            diff = (t1 - t0).total_seconds() / 60
-            st["minutes"] += max(diff, 1.0)  # bitta xabar bo'lsa ham kamida 1 daqiqa deb hisoblanadi
-        except (TypeError, ValueError):
-            st["minutes"] += 1.0
-
-    c2 = db()
-    users_list = []
-    for tid, stat in per_user.items():
-        u = c2.execute("SELECT name, username FROM users WHERE telegram_id=?", (tid,)).fetchone()
-        users_list.append({
-            "tid": tid,
-            "name": ((u["name"] if u else "") or "").strip() or "—",
-            "username": (u["username"] if u else "") or "",
-            "messages": stat["messages"],
-            "active_days": stat["days"],
-            "est_minutes": round(stat["minutes"]),
-        })
-    c2.close()
-    users_list.sort(key=lambda x: -x["messages"])
-
-    return {
-        "month": month,
-        "total_users": total_users,
-        "total_messages": total_messages,
-        "total_est_minutes": sum(u["est_minutes"] for u in users_list),
-        "users": users_list,
-    }
 
 
 # ===== TOPICS =====
