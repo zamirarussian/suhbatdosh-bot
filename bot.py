@@ -4,7 +4,8 @@ import asyncio
 import logging
 import httpx
 from groq import Groq
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
+                      ReplyKeyboardMarkup, KeyboardButton, WebAppInfo)
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes
@@ -297,8 +298,54 @@ def menu_keyboard():
 MENU_TEXT = "Qanday suhbat qilamiz? 👇\n\n📚 *Mavzu tanlash* — tayyor mavzu bo'yicha gaplashamiz\n💬 *Erkin suhbat* — xohlagan narsa haqida"
 
 
+BTN_TOPICS = "📚 Mavzu tanlash"
+BTN_FREE = "💬 Erkin suhbat"
+BTN_PROFILE = "👤 Profil"
+BTN_HELP = "❓ Yordam"
+HELP_TEXT = ("❓ *Yordam*\n\n"
+             "📚 *Mavzu tanlash* — tayyor mavzu bo'yicha gaplashing\n"
+             "💬 *Erkin suhbat* — xohlagan narsa haqida\n"
+             "🎤 Ovoz yuborsangiz ham bo'ladi, men ovoz bilan javob beraman\n"
+             "🔄 /reset — suhbatni boshidan boshlash\n"
+             "📋 /menu — menyuni ochish")
+
+
+def bottom_keyboard():
+    """Chat pastidagi doimiy tugmalar."""
+    row2 = [KeyboardButton(BTN_HELP)]
+    if MINIAPP_URL:
+        row2.insert(0, KeyboardButton(BTN_PROFILE, web_app=WebAppInfo(url=MINIAPP_URL)))
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(BTN_TOPICS), KeyboardButton(BTN_FREE)], row2],
+        resize_keyboard=True,
+    )
+
+
 async def send_menu(message):
+    await message.reply_text("👇", reply_markup=bottom_keyboard())
     await message.reply_text(MENU_TEXT, reply_markup=menu_keyboard(), parse_mode="Markdown")
+
+
+async def send_topics_list(message):
+    topics = get_topics()
+    if not topics:
+        await message.reply_text("Hozircha mavzular yo'q. Erkin suhbatni tanlang 👇", reply_markup=menu_keyboard())
+        return
+    rows = [[InlineKeyboardButton(t["title"], callback_data=f"topic:{t['id']}")] for t in topics]
+    rows.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="menu:back")])
+    await message.reply_text("📚 Mavzuni tanlang:", reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def start_free_chat(update, context):
+    uid = update.effective_user.id
+    fu = _FauxUpdate(update.message)
+    if not await check(fu, uid): return
+    clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
+    set_mode(uid, "free")
+    lesson_system[uid] = FREE_SYSTEM
+    await update.message.reply_text("💬 Erkin suhbat boshlandi! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish")
+    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+    await _process_turn(fu, uid, "Начинаем. Поприветствуй меня и задай один открытый вопрос о моей жизни.")
 
 
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -432,6 +479,13 @@ async def _process_turn(update, tid, text):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tid = update.effective_user.id
+    _t = (update.message.text or "").strip()
+    if _t == BTN_TOPICS:
+        await send_topics_list(update.message); return
+    if _t == BTN_FREE:
+        await start_free_chat(update, context); return
+    if _t == BTN_HELP:
+        await update.message.reply_text(HELP_TEXT, parse_mode="Markdown"); return
     if not await check(update, tid): return
     inc_msg(tid)
     streak = update_streak(tid)
