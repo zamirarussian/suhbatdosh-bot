@@ -11,7 +11,7 @@ from database import (
     get_user, create_user, check_access, inc_msg,
     update_streak, get_streak_msg, gs, get_history,
     add_history, clear_history, update_user,
-    set_mode, clear_mode, inc_exam_step,
+    set_mode, clear_mode, inc_exam_step, get_topics,
 )
 from lesson_api import get_lesson, get_week_lessons, build_daily_prompt, build_exam_prompt
 
@@ -49,12 +49,24 @@ def get_exam_questions_count(tid=None):
 
 groq = Groq(api_key=GROQ_KEY)
 
-FREE_SYSTEM = """Ты — собеседник для практики разговорного русского языка.
-1. Отвечай коротко — 1-2 предложения, без вступлений
-2. Если пользователь даёт роль — играй её
-3. Задавай один короткий вопрос в конце
-4. Никогда не исправляй ошибки во время разговора
-5. Говори только по-русски"""
+FREE_SYSTEM = """Ты — дружелюбный собеседник для практики разговорного русского языка. Собеседник — узбекоязычный ученик.
+1. Говори простым русским языком, короткими понятными предложениями
+2. Сначала отреагируй на ответ ученика (например: «Ой, как интересно!», «Понятно», «Здорово!»), потом задай ОДИН открытый вопрос (почему? как? расскажи подробнее)
+3. Если ученик отвечает коротко — мягко попроси рассказать больше
+4. Если ученик даёт роль — играй её
+5. Никогда не исправляй ошибки во время разговора
+6. Отвечай 2-3 предложения, говори только по-русски"""
+
+TOPIC_SYSTEM = """Ты — дружелюбный собеседник для практики разговорного русского языка. Собеседник — узбекоязычный ученик начального уровня.
+Тема разговора: «{title}».
+Подсказка по теме (для тебя): {desc}
+1. Веди разговор строго вокруг этой темы, но естественно, как живой человек
+2. Говори простым русским языком, короткими понятными предложениями
+3. Сначала отреагируй на ответ ученика (например: «Понятно!», «Как здорово!»), потом задай ОДИН открытый вопрос по теме
+4. Если ученик отвечает коротко — мягко попроси рассказать больше
+5. Если тема — ситуация (кафе, магазин и т.п.), играй роль (например, официанта) и веди диалог
+6. Никогда не исправляй ошибки во время разговора
+7. Отвечай 2-3 предложения, говори только по-русски"""
 
 bot_replies = {}
 last_texts = {}
@@ -67,29 +79,6 @@ else:
 
 logger.info(f"[GROQ] Asosiy model: {PRIMARY_MODEL}, zaxira model: {FALLBACK_MODEL}")
 
-# gpt-oss modellari uchun extra_body orqali reasoning_effort ishlatib bo'lmasa
-# (kutubxona juda eski versiyada bo'lsa), avtomatik shu parametrsiz qayta uriladi —
-# bir marta aniqlangach qayta-qayta urinib vaqt yo'qotmaslik uchun eslab qolinadi.
-_reasoning_effort_supported = True
-
-
-def _create_completion(model, messages, max_tokens):
-    global _reasoning_effort_supported
-    if _reasoning_effort_supported:
-        try:
-            return groq.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                # gpt-oss modellari 'reasoning' modeli — "low" bo'lsa kam fikrlab,
-                # ko'proq joyni yakuniy javobga qoldiradi (bo'sh javob muammosini kamaytiradi)
-                extra_body={"reasoning_effort": "low"},
-            )
-        except TypeError as e:
-            logger.warning(f"[GROQ] extra_body/reasoning_effort qo'llab-quvvatlanmadi, oddiy so'rovga o'tildi: {e}")
-            _reasoning_effort_supported = False
-    return groq.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
-
 
 def _tag_groq_error(model, e):
     """Xato matniga qarab sababni ANIQLAB loglaydi (foydalanuvchiga hech qachon ko'rsatilmaydi,
@@ -101,6 +90,25 @@ def _tag_groq_error(model, e):
         logger.error(f"[GROQ LIMIT TUGADI] ({model}): {e}")
     else:
         logger.error(f"[GROQ BOSHQA XATO] ({model}): {e}")
+
+
+_reasoning_effort_supported = True
+
+
+def _create_completion(model, messages, max_tokens):
+    """gpt-oss modellari uchun reasoning_effort=low (bo'sh javob xavfini kamaytiradi).
+    Eski groq SDK'da to'g'ridan-to'g'ri kwarg xato berishi mumkin, shuning uchun extra_body orqali."""
+    global _reasoning_effort_supported
+    if _reasoning_effort_supported:
+        try:
+            return groq.chat.completions.create(
+                model=model, messages=messages, max_tokens=max_tokens,
+                extra_body={"reasoning_effort": "low"},
+            )
+        except TypeError as e:
+            logger.warning(f"reasoning_effort qo'llab-quvvatlanmaydi, o'chirildi: {e}")
+            _reasoning_effort_supported = False
+    return groq.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
 
 
 def _groq_complete(messages, max_tokens):
@@ -221,6 +229,31 @@ async def check(update, tid):
     return True
 
 
+class _FauxUpdate:
+    """Callback tugmalardan kelganda update.message o'rniga ishlatiladi."""
+    def __init__(self, message): self.message = message
+
+
+def menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📚 Mavzu tanlash", callback_data="menu:topics")],
+        [InlineKeyboardButton("💬 Erkin suhbat", callback_data="menu:free")],
+    ])
+
+
+MENU_TEXT = "Qanday suhbat qilamiz? 👇\n\n📚 *Mavzu tanlash* — tayyor mavzu bo'yicha gaplashamiz\n💬 *Erkin suhbat* — xohlagan narsa haqida"
+
+
+async def send_menu(message):
+    await message.reply_text(MENU_TEXT, reply_markup=menu_keyboard(), parse_mode="Markdown")
+
+
+async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tid = update.effective_user.id
+    create_user(tid, update.effective_user.full_name, update.effective_user.username or "")
+    await send_menu(update.message)
+
+
 # ===== /start payload parser =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tid = update.effective_user.id
@@ -267,6 +300,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await send_welcome(update)
+    await send_menu(update.message)
 
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -275,6 +309,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clear_mode(tid)
     lesson_system.pop(tid, None)
     await update.message.reply_text("Yangi suhbat boshlandi! 🔄")
+    await send_menu(update.message)
 
 
 async def end_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -403,13 +438,49 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"groq_score callback: {e}")
             await q.message.reply_text(GENERIC_ERROR_TEXT)
+    elif d.startswith("menu:"):
+        action = d.split(":", 1)[1]
+        if action == "topics":
+            topics = get_topics()
+            if not topics:
+                await q.message.reply_text("Hozircha mavzular yo'q. Erkin suhbatni tanlang 👇", reply_markup=menu_keyboard())
+                return
+            rows = [[InlineKeyboardButton(t["title"], callback_data=f"topic:{t['id']}")] for t in topics]
+            rows.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="menu:back")])
+            await q.message.reply_text("📚 Mavzuni tanlang:", reply_markup=InlineKeyboardMarkup(rows))
+        elif action == "back":
+            await send_menu(q.message)
+        elif action == "free":
+            fu = _FauxUpdate(q.message)
+            if not await check(fu, uid): return
+            clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
+            set_mode(uid, "free")
+            lesson_system[uid] = FREE_SYSTEM
+            await q.message.reply_text("💬 Erkin suhbat boshlandi! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish")
+            await context.bot.send_chat_action(q.message.chat_id, "typing")
+            await _process_turn(fu, uid, "Начинаем. Поприветствуй меня и задай один открытый вопрос о моей жизни.")
+    elif d.startswith("topic:"):
+        fu = _FauxUpdate(q.message)
+        if not await check(fu, uid): return
+        try:
+            tid_topic = int(d.split(":", 1)[1])
+        except ValueError:
+            return
+        topic = next((t for t in get_topics() if t["id"] == tid_topic), None)
+        if not topic:
+            await q.message.reply_text("Bu mavzu topilmadi 😔", reply_markup=menu_keyboard())
+            return
+        clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
+        set_mode(uid, "topic")
+        lesson_system[uid] = TOPIC_SYSTEM.format(title=topic["title"], desc=(topic.get("description") or topic["title"]))
+        await q.message.reply_text(f"📚 Mavzu: *{topic['title']}*\nBoshlaymiz! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish", parse_mode="Markdown")
+        await context.bot.send_chat_action(q.message.chat_id, "typing")
+        await _process_turn(fu, uid, "Начинаем.")
     elif d.startswith("godaily:"):
         if lesson_system.get(uid) is None:
             await q.message.reply_text("Sessiya eskirgan, iltimos ilovadan qayta kiring.")
             return
         await context.bot.send_chat_action(q.message.chat_id, "typing")
-        class _FauxUpdate:
-            def __init__(self, message): self.message = message
         await _process_turn(_FauxUpdate(q.message), uid, "Начинаем.")
     elif d.startswith("help:"):
         await q.message.reply_text(
@@ -424,6 +495,7 @@ def build_app():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
+    app.add_handler(CommandHandler("menu", menu_cmd))
     app.add_handler(CommandHandler("end", end_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
