@@ -360,3 +360,79 @@ def get_users_for_broadcast(target):
         rows = []
     c.close()
     return [r["telegram_id"] for r in rows]
+
+
+# ===== OYLIK STATISTIKA (nechta odam gaplashdi, nechta savol-javob, taxminiy vaqt) =====
+def get_available_months():
+    """History'da ma'lumot bor barcha oylar ro'yxati ('YYYY-MM'), yangisidan eskisiga."""
+    c = db()
+    rows = c.execute(
+        "SELECT DISTINCT substr(created_at,1,7) as m FROM history WHERE role='user' ORDER BY m DESC"
+    ).fetchall()
+    c.close()
+    return [r["m"] for r in rows]
+
+
+def get_monthly_stats(month=None):
+    """Berilgan oy ('YYYY-MM', None bo'lsa — joriy oy) uchun statistika.
+    Qaytaradi: {month, total_users, total_messages, total_est_minutes, users: [...]}
+    'est_minutes' — TAXMINIY faollik vaqti: har kunda foydalanuvchining birinchi va oxirgi
+    xabari orasidagi farq asosida hisoblanadi (aniq sekund darajasida kuzatilmagani uchun
+    100% aniq emas, lekin foydali taxmin beradi)."""
+    if month is None:
+        month = date.today().strftime("%Y-%m")
+    c = db()
+    total_users = c.execute(
+        "SELECT COUNT(DISTINCT telegram_id) as n FROM history WHERE role='user' AND substr(created_at,1,7)=?",
+        (month,)
+    ).fetchone()["n"]
+    total_messages = c.execute(
+        "SELECT COUNT(*) as n FROM history WHERE role='user' AND substr(created_at,1,7)=?",
+        (month,)
+    ).fetchone()["n"]
+
+    rows = c.execute("""
+        SELECT telegram_id, substr(created_at,1,10) as d,
+               MIN(created_at) as t0, MAX(created_at) as t1, COUNT(*) as cnt
+        FROM history
+        WHERE role='user' AND substr(created_at,1,7)=?
+        GROUP BY telegram_id, d
+    """, (month,)).fetchall()
+    c.close()
+
+    per_user = {}
+    for r in rows:
+        tid = r["telegram_id"]
+        st = per_user.setdefault(tid, {"messages": 0, "minutes": 0.0, "days": 0})
+        st["messages"] += r["cnt"]
+        st["days"] += 1
+        try:
+            t0 = datetime.strptime(r["t0"], "%Y-%m-%d %H:%M:%S")
+            t1 = datetime.strptime(r["t1"], "%Y-%m-%d %H:%M:%S")
+            diff = (t1 - t0).total_seconds() / 60
+            st["minutes"] += max(diff, 1.0)  # bitta xabar bo'lsa ham kamida 1 daqiqa deb hisoblanadi
+        except (TypeError, ValueError):
+            st["minutes"] += 1.0
+
+    c2 = db()
+    users_list = []
+    for tid, stat in per_user.items():
+        u = c2.execute("SELECT name, username FROM users WHERE telegram_id=?", (tid,)).fetchone()
+        users_list.append({
+            "tid": tid,
+            "name": ((u["name"] if u else "") or "").strip() or "—",
+            "username": (u["username"] if u else "") or "",
+            "messages": stat["messages"],
+            "active_days": stat["days"],
+            "est_minutes": round(stat["minutes"]),
+        })
+    c2.close()
+    users_list.sort(key=lambda x: -x["messages"])
+
+    return {
+        "month": month,
+        "total_users": total_users,
+        "total_messages": total_messages,
+        "total_est_minutes": sum(u["est_minutes"] for u in users_list),
+        "users": users_list,
+    }
