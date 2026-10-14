@@ -73,6 +73,16 @@ TOPIC_SYSTEM = """Ты — дружелюбный собеседник для п
 6. Никогда не исправляй ошибки во время разговора
 7. Отвечай 2-3 предложения, говори только по-русски"""
 
+LEVEL_HINT = {
+    "A1": "\nУровень ученика: A1 (начинающий). Говори очень просто: фразы по 4–8 слов, базовые слова, в основном настоящее время. Не используй сложных слов.",
+    "B1": "\nУровень ученика: B1 (средний). Говори естественно, можно использовать более сложные предложения, прошедшее и будущее время, просить высказать мнение и объяснить причины.",
+}
+
+
+def _level_of(title):
+    return title[:2] if title[:5] in ("A1 · ", "B1 · ") else None
+
+
 bot_replies = {}
 last_texts = {}
 lesson_system = {}   # tid -> joriy dars/imtihon system prompt (xotirada)
@@ -360,16 +370,31 @@ async def send_topics_list(message, level=None):
     await message.reply_text("📚 Mavzuni tanlang:", reply_markup=InlineKeyboardMarkup(rows))
 
 
-async def start_free_chat(update, context):
-    uid = update.effective_user.id
-    fu = _FauxUpdate(update.message)
+def level_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📗 A1 — boshlang'ich", callback_data="menu:free:A1")],
+        [InlineKeyboardButton("📘 B1 — o'rta", callback_data="menu:free:B1")],
+        [InlineKeyboardButton("⬅️ Orqaga", callback_data="menu:back")],
+    ])
+
+
+async def send_level_choice(message):
+    await message.reply_text("💬 Erkin suhbat. Darajangizni tanlang:", reply_markup=level_keyboard())
+
+
+async def begin_free(message, context, uid, level):
+    fu = _FauxUpdate(message)
     if not await check(fu, uid): return
     clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
     set_mode(uid, "free")
-    lesson_system[uid] = FREE_SYSTEM
-    await update.message.reply_text("💬 Erkin suhbat boshlandi! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish")
-    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+    lesson_system[uid] = FREE_SYSTEM + LEVEL_HINT.get(level, "")
+    await message.reply_text(f"💬 Erkin suhbat ({level}) boshlandi! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish")
+    await context.bot.send_chat_action(message.chat_id, "typing")
     await _process_turn(fu, uid, "Начинаем. Поприветствуй меня и задай один открытый вопрос о моей жизни.")
+
+
+async def start_free_chat(update, context):
+    await send_level_choice(update.message)
 
 
 async def start_topic(message, context, uid, topic_id):
@@ -381,7 +406,7 @@ async def start_topic(message, context, uid, topic_id):
         return
     clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
     set_mode(uid, "topic")
-    lesson_system[uid] = TOPIC_SYSTEM.format(title=topic["title"], desc=(topic.get("description") or topic["title"]))
+    lesson_system[uid] = TOPIC_SYSTEM.format(title=topic["title"], desc=(topic.get("description") or topic["title"])) + LEVEL_HINT.get(_level_of(topic["title"]), "")
     await message.reply_text(f"📚 Mavzu: *{topic['title']}*\nBoshlaymiz! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish", parse_mode="Markdown")
     await context.bot.send_chat_action(message.chat_id, "typing")
     await _process_turn(fu, uid, "Начинаем.")
@@ -396,7 +421,11 @@ async def webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     create_user(uid, update.effective_user.full_name, update.effective_user.username or "")
     if data.get("a") == "free":
-        await start_free_chat(update, context)
+        lvl = data.get("l")
+        if lvl in ("A1", "B1"):
+            await begin_free(update.effective_message, context, uid, lvl)
+        else:
+            await send_level_choice(update.effective_message)
     elif data.get("a") == "topic":
         try:
             await start_topic(update.effective_message, context, uid, int(data.get("id")))
@@ -608,15 +637,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_topics_list(q.message, parts[1] if len(parts) > 1 else None)
         elif action == "back":
             await send_menu(q.message)
-        elif action == "free":
-            fu = _FauxUpdate(q.message)
-            if not await check(fu, uid): return
-            clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
-            set_mode(uid, "free")
-            lesson_system[uid] = FREE_SYSTEM
-            await q.message.reply_text("💬 Erkin suhbat boshlandi! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish")
-            await context.bot.send_chat_action(q.message.chat_id, "typing")
-            await _process_turn(fu, uid, "Начинаем. Поприветствуй меня и задай один открытый вопрос о моей жизни.")
+        elif action.startswith("free"):
+            parts = action.split(":")
+            if len(parts) > 1 and parts[1] in ("A1", "B1"):
+                await begin_free(q.message, context, uid, parts[1])
+            else:
+                await send_level_choice(q.message)
     elif d.startswith("topic:"):
         try:
             tid_topic = int(d.split(":", 1)[1])
