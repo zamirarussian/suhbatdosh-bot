@@ -192,9 +192,13 @@ function show(id){
   window.scrollTo(0,0);
 }
 
+var BOT = 'zamira_suhbatdosh_bot';
+
 function send(obj){
-  if (tg && tg.sendData) { tg.sendData(JSON.stringify(obj)); }
-  else { alert("Bu tugma faqat Telegramdagi 'Profil' tugmasi orqali ishlaydi."); }
+  var payload = obj.a === 'topic' ? ('t_' + obj.id) : ('f_' + (obj.l || 'A1'));
+  var url = 'https://t.me/' + BOT + '?start=' + payload;
+  if (tg && tg.openTelegramLink) { tg.openTelegramLink(url); }
+  else { window.location.href = url; }
 }
 
 var STATUS = {trial:'Sinov', premium:'Premium', expired:'Tugagan', blocked:'Bloklangan'};
