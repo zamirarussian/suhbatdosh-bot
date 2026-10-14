@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import asyncio
 import logging
@@ -326,13 +327,36 @@ async def send_menu(message):
     await message.reply_text(MENU_TEXT, reply_markup=menu_keyboard(), parse_mode="Markdown")
 
 
-async def send_topics_list(message):
+def _topic_groups(topics):
+    groups = {"A1": [], "B1": [], "other": []}
+    for t in topics:
+        title = t["title"]
+        if title.startswith("A1 · "): groups["A1"].append(t)
+        elif title.startswith("B1 · "): groups["B1"].append(t)
+        else: groups["other"].append(t)
+    return groups
+
+
+async def send_topics_list(message, level=None):
     topics = get_topics()
     if not topics:
         await message.reply_text("Hozircha mavzular yo'q. Erkin suhbatni tanlang 👇", reply_markup=menu_keyboard())
         return
-    rows = [[InlineKeyboardButton(t["title"], callback_data=f"topic:{t['id']}")] for t in topics]
-    rows.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="menu:back")])
+    g = _topic_groups(topics)
+    if level is None and (g["A1"] or g["B1"]):
+        rows = []
+        if g["A1"]: rows.append([InlineKeyboardButton("📗 A1 mavzular", callback_data="menu:topics:A1")])
+        if g["B1"]: rows.append([InlineKeyboardButton("📘 B1 mavzular", callback_data="menu:topics:B1")])
+        if g["other"]: rows.append([InlineKeyboardButton("⭐ Boshqa mavzular", callback_data="menu:topics:other")])
+        rows.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="menu:back")])
+        await message.reply_text("📚 Darajani tanlang:", reply_markup=InlineKeyboardMarkup(rows))
+        return
+    items = g[level] if level in g else topics
+    rows = []
+    for t in items:
+        label = t["title"].split(" · ", 1)[1] if level in ("A1", "B1") and " · " in t["title"] else t["title"]
+        rows.append([InlineKeyboardButton(label, callback_data=f"topic:{t['id']}")])
+    rows.append([InlineKeyboardButton("⬅️ Darajalar", callback_data="menu:topics")])
     await message.reply_text("📚 Mavzuni tanlang:", reply_markup=InlineKeyboardMarkup(rows))
 
 
@@ -346,6 +370,38 @@ async def start_free_chat(update, context):
     await update.message.reply_text("💬 Erkin suhbat boshlandi! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish")
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
     await _process_turn(fu, uid, "Начинаем. Поприветствуй меня и задай один открытый вопрос о моей жизни.")
+
+
+async def start_topic(message, context, uid, topic_id):
+    fu = _FauxUpdate(message)
+    if not await check(fu, uid): return
+    topic = next((t for t in get_topics() if t["id"] == topic_id), None)
+    if not topic:
+        await message.reply_text("Bu mavzu topilmadi 😔", reply_markup=menu_keyboard())
+        return
+    clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
+    set_mode(uid, "topic")
+    lesson_system[uid] = TOPIC_SYSTEM.format(title=topic["title"], desc=(topic.get("description") or topic["title"]))
+    await message.reply_text(f"📚 Mavzu: *{topic['title']}*\nBoshlaymiz! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish", parse_mode="Markdown")
+    await context.bot.send_chat_action(message.chat_id, "typing")
+    await _process_turn(fu, uid, "Начинаем.")
+
+
+async def webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mini ilovadan (Profil tugmasi) kelgan tanlov."""
+    try:
+        data = json.loads(update.effective_message.web_app_data.data)
+    except Exception:
+        return
+    uid = update.effective_user.id
+    create_user(uid, update.effective_user.full_name, update.effective_user.username or "")
+    if data.get("a") == "free":
+        await start_free_chat(update, context)
+    elif data.get("a") == "topic":
+        try:
+            await start_topic(update.effective_message, context, uid, int(data.get("id")))
+        except (TypeError, ValueError):
+            return
 
 
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -547,14 +603,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.message.reply_text(GENERIC_ERROR_TEXT)
     elif d.startswith("menu:"):
         action = d.split(":", 1)[1]
-        if action == "topics":
-            topics = get_topics()
-            if not topics:
-                await q.message.reply_text("Hozircha mavzular yo'q. Erkin suhbatni tanlang 👇", reply_markup=menu_keyboard())
-                return
-            rows = [[InlineKeyboardButton(t["title"], callback_data=f"topic:{t['id']}")] for t in topics]
-            rows.append([InlineKeyboardButton("⬅️ Orqaga", callback_data="menu:back")])
-            await q.message.reply_text("📚 Mavzuni tanlang:", reply_markup=InlineKeyboardMarkup(rows))
+        if action.startswith("topics"):
+            parts = action.split(":")
+            await send_topics_list(q.message, parts[1] if len(parts) > 1 else None)
         elif action == "back":
             await send_menu(q.message)
         elif action == "free":
@@ -567,22 +618,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_chat_action(q.message.chat_id, "typing")
             await _process_turn(fu, uid, "Начинаем. Поприветствуй меня и задай один открытый вопрос о моей жизни.")
     elif d.startswith("topic:"):
-        fu = _FauxUpdate(q.message)
-        if not await check(fu, uid): return
         try:
             tid_topic = int(d.split(":", 1)[1])
         except ValueError:
             return
-        topic = next((t for t in get_topics() if t["id"] == tid_topic), None)
-        if not topic:
-            await q.message.reply_text("Bu mavzu topilmadi 😔", reply_markup=menu_keyboard())
-            return
-        clear_history(uid); clear_mode(uid); lesson_system.pop(uid, None)
-        set_mode(uid, "topic")
-        lesson_system[uid] = TOPIC_SYSTEM.format(title=topic["title"], desc=(topic.get("description") or topic["title"]))
-        await q.message.reply_text(f"📚 Mavzu: *{topic['title']}*\nBoshlaymiz! Ovoz yuboring yoki yozing.\n/menu — menyuga qaytish", parse_mode="Markdown")
-        await context.bot.send_chat_action(q.message.chat_id, "typing")
-        await _process_turn(fu, uid, "Начинаем.")
+        await start_topic(q.message, context, uid, tid_topic)
     elif d.startswith("godaily:"):
         if lesson_system.get(uid) is None:
             await q.message.reply_text("Sessiya eskirgan, iltimos ilovadan qayta kiring.")
@@ -604,6 +644,7 @@ def build_app():
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CommandHandler("menu", menu_cmd))
     app.add_handler(CommandHandler("end", end_cmd))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(CallbackQueryHandler(handle_callback))
